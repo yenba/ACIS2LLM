@@ -486,4 +486,4 @@ class TestFindBestStationWaterfall:
 
         result = find_best_station("Middle of Nowhere")
         assert "error" in result
-        assert "Could not geocode" in result["error"]
+        assert "not a valid 5-digit zip code" in result["error"]

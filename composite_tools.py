@@ -1,19 +1,12 @@
-"""Composite tools that aggregate xmacis2py daily data into high-level results.
-
-Each tool fetches raw daily data via get_data() and aggregates with pandas,
-returning structured results that answer common climatological queries in one call.
-"""
-
 import calendar
 import re
-import time
-from datetime import datetime
-
-import numpy as np
-import pandas as pd
 import requests
+import pandas as pd
+from datetime import datetime
+import numpy as np
 
 try:
+    import xmacis2py
     from xmacis2py import get_data
     XMACIS2PY_AVAILABLE = True
 except ImportError:
@@ -35,11 +28,10 @@ _STATE_TO_FIPS = {
     "WI": "55", "WY": "56", "AS": "60", "GU": "66", "MP": "69", "PR": "72", "VI": "78", "DC": "11"
 }
 
-
 def geocode_census(location: str):
-    """Geocodes a location string using US Census Geocoder or Zippopotam.us for zips."""
+    """Geocodes a location string using Census Geocoder or Zippopotam.us."""
     location = location.strip()
-    
+
     # Check if it's a zip code
     if is_zip_code(location):
         try:
@@ -58,113 +50,41 @@ def geocode_census(location: str):
         except Exception:
             pass
 
-    # Fallback to US Census Geocoder for addresses/cities
-    # Note: Census Geocoder's onelineaddress endpoint is picky and often requires 
-    # a street address. 
-
-    # 1. Try TIGERweb for city center centroids (robust for city/state queries)
-    if "," in location and not any(char.isdigit() for char in location):
-        parts = [p.strip() for p in location.split(",")]
-        if len(parts) >= 2:
-            city_name = parts[0]
-            state_in = parts[1].upper()
-            state_fips = _STATE_TO_FIPS.get(state_in)
-            
-            # TIGERweb Layers: 4 (Incorporated Places), 6 (Census Designated Places), 26 (Consolidated Cities)
-            for layer_id in [4, 6, 26]:
-                tiger_url = f"https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Places_CouSub_ConCity_SubMCD/MapServer/{layer_id}/query"
-                where = f"NAME LIKE '{city_name}%'"
-                if state_fips:
-                    where += f" AND STATE = '{state_fips}'"
-
-                params = {
-                    "where": where,
-                    "outFields": "NAME,STATE,CENTLAT,CENTLON",
-                    "returnGeometry": "false",
-                    "f": "json",
-                }
-                try:
-                    resp = requests.get(tiger_url, params=params, timeout=10)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        features = data.get("features", [])
-                        if features:
-                            # Prefer a match that contains the city name exactly in the full name
-                            best_match = features[0]
-                            for feat in features:
-                                name = feat.get('attributes', {}).get('NAME', '')
-                                # Match "Lexington" in "Lexington-Fayette urban county"
-                                if city_name.lower() in name.lower():
-                                    best_match = feat
-                                    if name.lower() == city_name.lower() or name.lower().startswith(city_name.lower() + " "):
-                                        break
-                            
-                            attrs = best_match.get("attributes", {})
-                            if "CENTLAT" in attrs and "CENTLON" in attrs:
-                                return {
-                                    "lat": float(attrs["CENTLAT"]),
-                                    "lon": float(attrs["CENTLON"]),
-                                    "display_name": f"{attrs['NAME']} city center"
-                                }
-                except Exception:
-                    continue
-
-    # 2. Generic Census Geocoder (heuristic for addresses)
-    search_location = location
-    if not any(char.isdigit() for char in location):
-        search_location = f"1 Main St, {location}"
-
+    # Generic geocoding via Census
     params = {
-        "address": search_location,
+        "address": location,
         "benchmark": "Public_AR_Current",
         "format": "json"
     }
     try:
-        resp = requests.get(CENSUS_GEOCODER_URL, params=params, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        matches = data.get("result", {}).get("addressMatches", [])
-        
-        # If no matches, try one more time without the hack just in case
-        if not matches and search_location != location:
-            params["address"] = location
-            resp = requests.get(CENSUS_GEOCODER_URL, params=params, timeout=10)
+        resp = requests.get(CENSUS_GEOCODER_URL, params=params, timeout=15)
+        if resp.status_code == 200:
             data = resp.json()
             matches = data.get("result", {}).get("addressMatches", [])
-
-        if not matches:
-            return None
-
-        first = matches[0]
-        return {
-            "lat": first["coordinates"]["y"],
-            "lon": first["coordinates"]["x"],
-            "display_name": first["matchedAddress"]
-        }
+            if matches:
+                match = matches[0]
+                return {
+                    "lat": match["coordinates"]["y"],
+                    "lon": match["coordinates"]["x"],
+                    "display_name": match["matchedAddress"]
+                }
     except Exception:
-        return None
+        pass
+
+    return None
 
 
 _MONTH_NAMES = {name.lower(): num for num, name in enumerate(calendar.month_name) if num}
 _MONTH_ABBRS = {name.lower(): num for num, name in enumerate(calendar.month_abbr) if num}
 
-_SEASON_MAP = {
-    "winter": [12, 1, 2],
-    "spring": [3, 4, 5],
-    "summer": [6, 7, 8],
-    "fall": [9, 10, 11],
-    "autumn": [9, 10, 11],
-}
-
-
 def _parse_month(month_input):
-    """Convert month input (name, abbreviation, or number) to integer 1-12.
+    """Convert month name or number to integer 1-12.
 
     Args:
-        month_input: "april", "Apr", "4", or 4
+        month_input: String or int.
 
     Returns:
-        Integer month number (1-12).
+        Int 1-12.
 
     Raises:
         ValueError: If input cannot be parsed or is out of range.
@@ -196,6 +116,14 @@ def _parse_month(month_input):
 
     raise ValueError(f"Could not parse month: '{month_input}'")
 
+
+_SEASON_MAP = {
+    "winter": [12, 1, 2],
+    "spring": [3, 4, 5],
+    "summer": [6, 7, 8],
+    "fall": [9, 10, 11],
+    "autumn": [9, 10, 11]
+}
 
 def _get_season_months(season):
     """Get the list of month numbers for a season.
@@ -281,12 +209,12 @@ def _aggregate_monthly_by_year(df, column, month, aggregation="sum",
     if values:
         summary_parts.append(f"Average: {np.mean(values):.2f}")
         summary_parts.append(f"Median: {np.median(values):.2f}")
-        summary_parts.append(f"Max: {max(values):.2f}")
-        summary_parts.append(f"Min: {min(values):.2f}")
-
+        summary_parts.append(f"Max: {np.max(values):.2f}")
+        summary_parts.append(f"Min: {np.min(values):.2f}")
+    
     return {
         "table": table,
-        "summary": ", ".join(summary_parts),
+        "summary": ", ".join(summary_parts)
     }
 
 
@@ -296,48 +224,35 @@ def _assign_season_year(date, season_months):
     For seasons that straddle year boundaries (winter: Dec, Jan, Feb),
     the season is labeled by the year of the last month.
     e.g., Dec 2023 belongs to Winter 2024.
-
-    Args:
-        date: A datetime object.
-        season_months: List of month numbers (e.g., [12, 1, 2]).
-
-    Returns:
-        Integer year label for this season.
     """
-    if date.month == 12 and 12 in season_months and 1 in season_months:
-        return date.year + 1
-    return date.year
-
+    month = date.month
+    year = date.year
+    if 12 in season_months and month == 12:
+        return year + 1
+    return year
 
 def _aggregate_seasonal_by_year(df, column, season_months, aggregation="sum",
                                  start_year=None, end_year=None):
-    """Aggregate a column by season-year for a set of months.
+    """Aggregate a column by year for a specific season.
 
     Args:
-        df: DataFrame with 'Date' column and the target column.
-        column: Column name to aggregate.
-        season_months: List of month numbers (e.g., [12, 1, 2] for winter).
+        df: DataFrame with 'Date' column and target column.
+        column: Column to aggregate.
+        season_months: List of month numbers (e.g., [12, 1, 2]).
         aggregation: "sum", "mean", "max", or "min".
         start_year: Optional first year.
         end_year: Optional last year.
 
     Returns:
-        Dict with 'table' (list of row dicts) and 'summary' (string).
+        Dict with 'table' and 'summary'.
     """
     df = df.copy()
     df["Date"] = pd.to_datetime(df["Date"])
     df["_month"] = df["Date"].dt.month
+    df["_season_year"] = df["Date"].apply(lambda d: _assign_season_year(d, season_months))
 
-    # Filter to season months
+    # Filter to target months
     filtered = df[df["_month"].isin(season_months)].copy()
-
-    if filtered.empty:
-        return {"table": [], "summary": "No data found for the specified season."}
-
-    # Assign season-year
-    filtered["_season_year"] = filtered["Date"].apply(
-        lambda d: _assign_season_year(d, season_months)
-    )
 
     # Filter year range
     if start_year is not None:
@@ -346,17 +261,26 @@ def _aggregate_seasonal_by_year(df, column, season_months, aggregation="sum",
         filtered = filtered[filtered["_season_year"] <= end_year]
 
     if filtered.empty:
-        return {"table": [], "summary": "No data found for the specified year range."}
+        return {
+            "table": [],
+            "summary": "No data found for the specified season and years.",
+        }
 
     # Convert column to numeric
     filtered[column] = pd.to_numeric(filtered[column], errors="coerce")
 
-    # Group by season-year and aggregate
+    # Group by season-year
     agg_func = {"sum": "sum", "mean": "mean", "max": "max", "min": "min"}[aggregation]
     grouped = filtered.groupby("_season_year").agg(
         value=(column, agg_func),
         missing_days=(column, lambda x: x.isna().sum()),
+        obs_count=(column, "count")
     ).reset_index()
+
+    # Filter out partial seasons (e.g., if we only have 1 month of data)
+    # A full season should have ~90 days. We'll be lenient and require at least 20 days per month.
+    min_days = len(season_months) * 20
+    grouped = grouped[grouped["obs_count"] >= min_days]
 
     # Build table
     table = []
@@ -368,128 +292,142 @@ def _aggregate_seasonal_by_year(df, column, season_months, aggregation="sum",
             "missing_days": int(row["missing_days"]),
         })
 
-    # Build summary
-    values = [r["value"] for r in table if r["value"] is not None]
-    year_count = len(table)
-    year_range = f"{table[0]['year']}-{table[-1]['year']}"
+    if not table:
+        return {"table": [], "summary": "No complete seasons found."}
 
-    summary_parts = [f"Seasonal {column} ({aggregation}) across {year_count} years ({year_range})"]
+    # Summary
+    values = [r["value"] for r in table if r["value"] is not None]
+    year_range = f"{table[0]['year']}-{table[-1]['year']}"
+    summary_parts = [f"Seasonal {column} ({aggregation}) across {len(table)} years ({year_range})"]
     if values:
         summary_parts.append(f"Average: {np.mean(values):.2f}")
         summary_parts.append(f"Median: {np.median(values):.2f}")
-        summary_parts.append(f"Max: {max(values):.2f}")
-        summary_parts.append(f"Min: {min(values):.2f}")
-
-    return {"table": table, "summary": ", ".join(summary_parts)}
-
-
-_COMPARISONS = {
-    "above": lambda val, threshold: val > threshold,
-    "at_or_above": lambda val, threshold: val >= threshold,
-    "below": lambda val, threshold: val < threshold,
-    "at_or_below": lambda val, threshold: val <= threshold,
-}
-
-
-def _calculate_frequency(df, column, threshold, comparison, month=None,
-                          season_months=None, start_year=None, end_year=None):
-    """Calculate how often a variable's aggregated value meets a condition.
-
-    Args:
-        df: DataFrame with 'Date' column and the target column.
-        column: Column name to check.
-        threshold: Value to compare against.
-        comparison: "above", "at_or_above", "below", or "at_or_below".
-        month: Integer month number (use month OR season_months, not both).
-        season_months: List of month numbers for a season.
-        start_year: Optional first year.
-        end_year: Optional last year.
-
-    Returns:
-        Dict with 'count', 'total_years', 'percentage', 'table', 'summary'.
-    """
-    if comparison not in _COMPARISONS:
-        raise ValueError(f"Unknown comparison: '{comparison}'. Use: {', '.join(_COMPARISONS.keys())}")
-
-    # Get per-year aggregated values
-    if month is not None:
-        yearly = _aggregate_monthly_by_year(df, column, month, aggregation="sum",
-                                             start_year=start_year, end_year=end_year)
-    elif season_months is not None:
-        yearly = _aggregate_seasonal_by_year(df, column, season_months, aggregation="sum",
-                                              start_year=start_year, end_year=end_year)
-    else:
-        raise ValueError("Either 'month' or 'season_months' must be provided.")
-
-    compare_fn = _COMPARISONS[comparison]
-
-    # Evaluate each year
-    table = []
-    met_count = 0
-    total = 0
-    for row in yearly["table"]:
-        val = row["value"]
-        if val is not None:
-            met = compare_fn(val, threshold)
-            table.append({
-                "year": row["year"],
-                "value": val,
-                "met_condition": met,
-            })
-            if met:
-                met_count += 1
-            total += 1
-        else:
-            table.append({
-                "year": row["year"],
-                "value": None,
-                "met_condition": None,
-            })
-
-    percentage = (met_count / total * 100) if total > 0 else 0
-
-    # Build summary
-    comp_label = comparison.replace("_", " ")
-    if month is not None:
-        period_label = calendar.month_name[month]
-    else:
-        period_label = "the season"
-
-    summary = (
-        f"{column} {comp_label} {threshold} occurred in {met_count} of "
-        f"{total} years ({percentage:.1f}%) for {period_label}."
-    )
+        summary_parts.append(f"Max: {np.max(values):.2f}")
+        summary_parts.append(f"Min: {np.min(values):.2f}")
 
     return {
-        "count": met_count,
-        "total_years": total,
-        "percentage": round(percentage, 1),
         "table": table,
-        "summary": summary,
+        "summary": ", ".join(summary_parts)
     }
 
 
-def frequency_of_occurrence(station, variable, threshold, comparison,
-                              month=None, season=None,
-                              start_year=None, end_year=None):
-    """Calculate how often a variable exceeds/falls below a threshold.
-
-    Answers "how often does X happen" by aggregating per-year values
-    and checking against the threshold.
-
-    Args:
-        station: 4-letter station ID.
-        variable: Weather variable code.
-        threshold: Value to compare against.
-        comparison: "above", "at_or_above", "below", or "at_or_below".
-        month: Month number or name (provide month OR season, not both).
-        season: Season name ("winter", "spring", etc.).
-        start_year: Optional first year.
-        end_year: Optional last year.
+def _calculate_frequency(df, column, threshold, comparison, month=None, season=None,
+                         start_year=None, end_year=None):
+    """Calculate frequency of occurrence for a threshold.
 
     Returns:
-        Dict with 'count', 'total_years', 'percentage', 'table', 'summary'.
+        Dict with stats and breakdown by year.
     """
+    df = df.copy()
+    df["Date"] = pd.to_datetime(df["Date"])
+    df["_month"] = df["Date"].dt.month
+    
+    if month:
+        df["_year"] = df["Date"].dt.year
+        target_months = [month]
+    else:
+        season_months = _get_season_months(season)
+        df["_year"] = df["Date"].apply(lambda d: _assign_season_year(d, season_months))
+        target_months = season_months
+
+    # Filter to target months and years
+    filtered = df[df["_month"].isin(target_months)].copy()
+    if start_year:
+        filtered = filtered[filtered["_year"] >= start_year]
+    if end_year:
+        filtered = filtered[filtered["_year"] <= end_year]
+
+    if filtered.empty:
+        return {"error": "No data found for the specified period."}
+
+    # Convert to numeric
+    filtered[column] = pd.to_numeric(filtered[column], errors="coerce")
+    
+    # Apply comparison
+    if comparison == "above":
+        filtered["_match"] = filtered[column] > threshold
+    elif comparison == "at_or_above":
+        filtered["_match"] = filtered[column] >= threshold
+    elif comparison == "below":
+        filtered["_match"] = filtered[column] < threshold
+    elif comparison == "at_or_below":
+        filtered["_match"] = filtered[column] <= threshold
+    else:
+        raise ValueError(f"Unknown comparison: {comparison}")
+
+    # Group by year
+    # Determine which extreme value is relevant for the comparison
+    extreme_func = "min" if comparison in ["below", "at_or_below"] else "max"
+    
+    grouped = filtered.groupby("_year").agg(
+        days_matched=("_match", "sum"),
+        total_days=("_match", "count"),
+        mean_value=(column, "mean"),
+        extreme_value=(column, extreme_func),
+        missing_days=(column, lambda x: x.isna().sum())
+    ).reset_index()
+
+    # Filter out years with too much missing data (e.g., > 10% of target days)
+    grouped = grouped[grouped["missing_days"] <= (grouped["total_days"] * 0.1)]
+    
+    if grouped.empty:
+        return {"error": "No years with sufficient data found."}
+
+    years_with_occurrence = (grouped["days_matched"] > 0).sum()
+    total_years = len(grouped)
+    percentage = (years_with_occurrence / total_years) * 100
+
+    table = []
+    for _, row in grouped.iterrows():
+        table.append({
+            "year": int(row["_year"]),
+            "days_met": int(row["days_matched"]),
+            "value": round(float(row["extreme_value"]), 3) if pd.notna(row["extreme_value"]) else None,
+            "mean_value": round(float(row["mean_value"]), 3) if pd.notna(row["mean_value"]) else None,
+            "extreme_value": round(float(row["extreme_value"]), 3) if pd.notna(row["extreme_value"]) else None,
+            "met_condition": bool(row["days_matched"] > 0)
+        })
+
+    period_desc = calendar.month_name[month] if month else season
+    summary = (f"In {period_desc}, {column} was {comparison} {threshold} "
+               f"in {years_with_occurrence} out of {total_years} years ({percentage:.1f}%).")
+
+    return {
+        "count": int(years_with_occurrence),
+        "total_years": int(total_years),
+        "percentage": round(float(percentage), 1),
+        "table": table,
+        "summary": summary
+    }
+
+
+def _get_station_start_year(station):
+    """Fetch earliest record year for a station from ACIS."""
+    try:
+        payload = {"sids": station, "meta": "valid_daterange"}
+        resp = requests.post(ACIS_STNMETA_URL, json=payload, timeout=10)
+        if resp.status_code == 200:
+            meta = resp.json().get("meta", [])
+            if meta:
+                valid_ranges = meta[0].get("valid_daterange", [])
+                earliest = 9999
+                for vr in valid_ranges:
+                    if vr and len(vr) >= 1:
+                        try:
+                            year = int(vr[0][:4])
+                            if year < earliest: earliest = year
+                        except (ValueError, IndexError):
+                            continue
+                if earliest != 9999:
+                    return earliest
+    except Exception:
+        pass
+    return 1850 # Fallback
+
+
+def frequency_of_occurrence(station, variable, threshold, comparison,
+                             month=None, season=None, start_year=None, end_year=None):
+    """Calculate how often a threshold is met across years."""
     if not XMACIS2PY_AVAILABLE:
         raise ImportError("xmacis2py is not installed.")
 
@@ -501,7 +439,11 @@ def frequency_of_occurrence(station, variable, threshold, comparison,
     column = VARIABLE_COLUMN_MAP.get(variable, variable)
 
     # Determine date range and fetch data
-    first_year = start_year or 1890
+    if start_year is None:
+        first_year = _get_station_start_year(station)
+    else:
+        first_year = start_year
+    
     last_year = end_year or pd.Timestamp.now().year
 
     if month is not None:
@@ -517,7 +459,7 @@ def frequency_of_occurrence(station, variable, threshold, comparison,
         season_months = _get_season_months(season)
         first_month = min(season_months)
         last_month = max(season_months)
-
+        
         if 12 in season_months and 1 in season_months:
             start_date = f"{first_year - 1}-12-01"
             end_date = f"{last_year}-02-28"
@@ -525,35 +467,27 @@ def frequency_of_occurrence(station, variable, threshold, comparison,
             last_day = calendar.monthrange(last_year, last_month)[1]
             start_date = f"{first_year}-{first_month:02d}-01"
             end_date = f"{last_year}-{last_month:02d}-{last_day:02d}"
-
+        
         df = get_data(station, start_date=start_date, end_date=end_date)
         return _calculate_frequency(df, column, threshold, comparison,
-                                     season_months=season_months,
+                                     season=season,
                                      start_year=start_year, end_year=end_year)
 
 
 def seasonal_summary(station, variable, season, start_year=None,
                       end_year=None, aggregation="sum"):
-    """Summarize a variable across a meteorological season by year.
-
-    Args:
-        station: 4-letter station ID.
-        variable: Weather variable code.
-        season: "winter", "spring", "summer", "fall", or "autumn".
-        start_year: Optional first year.
-        end_year: Optional last year.
-        aggregation: "sum", "mean", "max", or "min". Default "sum".
-
-    Returns:
-        Dict with 'table', 'summary'.
-    """
+    """Summarize a variable across a season by year."""
     if not XMACIS2PY_AVAILABLE:
         raise ImportError("xmacis2py is not installed.")
 
     season_months = _get_season_months(season)
     column = VARIABLE_COLUMN_MAP.get(variable, variable)
 
-    first_year = start_year or 1890
+    if start_year is None:
+        first_year = _get_station_start_year(station)
+    else:
+        first_year = start_year
+        
     last_year = end_year or pd.Timestamp.now().year
 
     # For seasons that straddle year boundaries, extend the date range
@@ -572,28 +506,14 @@ def seasonal_summary(station, variable, season, start_year=None,
     df = get_data(station, start_date=start_date, end_date=end_date)
 
     return _aggregate_seasonal_by_year(df, column, season_months,
-                                        aggregation=aggregation,
-                                        start_year=start_year,
-                                        end_year=end_year)
+                                         aggregation=aggregation,
+                                         start_year=start_year,
+                                         end_year=end_year)
 
 
 def monthly_totals_by_year(station, variable, month, start_year=None,
                             end_year=None, aggregation="sum"):
-    """Get a variable's monthly aggregate for a single month across years.
-
-    Fetches daily data via get_data and aggregates by year.
-
-    Args:
-        station: 4-letter station ID (e.g., "KLEX").
-        variable: Weather variable code (e.g., "snow", "tmax").
-        month: Month number (1-12) or name ("april", "Apr").
-        start_year: Optional first year.
-        end_year: Optional last year.
-        aggregation: "sum", "mean", "max", or "min". Default "sum".
-
-    Returns:
-        Dict with 'table', 'summary'.
-    """
+    """Get a variable's monthly aggregate for a single month across years."""
     if not XMACIS2PY_AVAILABLE:
         raise ImportError("xmacis2py is not installed.")
 
@@ -601,7 +521,11 @@ def monthly_totals_by_year(station, variable, month, start_year=None,
     column = VARIABLE_COLUMN_MAP.get(variable, variable)
 
     # Build date range for the full period
-    first_year = start_year or 1890
+    if start_year is None:
+        first_year = _get_station_start_year(station)
+    else:
+        first_year = start_year
+        
     last_year = end_year or pd.Timestamp.now().year
     last_day = calendar.monthrange(last_year, month_num)[1]
     start_date = f"{first_year}-{month_num:02d}-01"
@@ -615,6 +539,14 @@ def monthly_totals_by_year(station, variable, month, start_year=None,
                                        end_year=end_year)
 
 
+def monthly_threshold_counts(station, variable, threshold, comparison,
+                             month=None, season=None, start_year=None, end_year=None):
+    """Count how many days meet a threshold per year for a specific month or season."""
+    return frequency_of_occurrence(station, variable, threshold, comparison,
+                                   month=month, season=season, 
+                                   start_year=start_year, end_year=end_year)
+
+
 def is_zip_code(location: str) -> bool:
     """Detect 5-digit zip patterns (and optional +4 extension)."""
     return bool(re.match(r"^\d{5}(-\d{4})?$", location.strip()))
@@ -624,14 +556,14 @@ def find_best_station(location):
     """Find the ACIS station with the best data record near a location.
 
     Follows a waterfall logic:
-    1. Direct ID Match (ACIS stnmeta)
+    1. Direct ID Match (ACIS stnmeta) - Only if location looks like an ID
     2. Zip Code Centroid (Census Geocoder)
     3. City/State Geocoding (Census Geocoder)
     4. ACIS Radius Search (if coordinates found)
 
     Returns:
-        Dict with 'station_id', 'name', 'state', 'coordinates',
-        'data_start', 'data_end', 'all_ids', and 'nearby_stations'.
+        Dict with 'station_id', 'name', 'coordinates', 'data_start', 
+        'data_end', 'all_ids', 'geocoded_location', and 'nearby_stations'.
     """
     location = location.strip()
     current_year = datetime.now().year
@@ -646,10 +578,8 @@ def find_best_station(location):
         resp = requests.post(ACIS_STNMETA_URL, json=acis_payload, timeout=10)
         resp.raise_for_status()
         meta = resp.json().get("meta", [])
-        # If exactly one active station matches, return it
         if len(meta) == 1:
             stn = meta[0]
-            # Check if active
             valid_ranges = stn.get("valid_daterange", [])
             latest_end = 0
             earliest_start = 9999
@@ -662,43 +592,55 @@ def find_best_station(location):
                         earliest_start = min(earliest_start, start_y)
                     except (ValueError, IndexError):
                         continue
+
+            sids = stn.get("sids", [])
+            primary_id = sids[0].split()[0] if sids else location
+            for sid_entry in sids:
+                sid_code = sid_entry.split()[0]
+                if (sid_code.startswith("K") and len(sid_code) == 4) or \
+                   (sid_code.startswith(("PA", "PH")) and len(sid_code) == 4):
+                    primary_id = sid_code
+                    break
             
-            if latest_end >= current_year - 1:
-                # Return this station
-                sids = stn.get("sids", [])
-                primary_id = sids[0].split()[0] if sids else location
-                for sid_entry in sids:
-                    sid_code = sid_entry.split()[0]
-                    if (sid_code.startswith("K") and len(sid_code) == 4) or \
-                       (sid_code.startswith(("PA", "PH")) and len(sid_code) == 4):
-                        primary_id = sid_code
-                        break
-                
-                return {
-                    "station_id": primary_id,
-                    "name": f"{stn.get('name')}, {stn.get('state')}",
-                    "coordinates": stn.get("ll"),
-                    "data_start": earliest_start,
-                    "data_end": latest_end,
-                    "record_length_years": latest_end - earliest_start,
-                    "all_ids": [s.split()[0] for s in sids],
-                    "geocoded_location": location,
-                    "nearby_stations": []
-                }
+            return {
+                "station_id": primary_id,
+                "name": f"{stn.get('name')}, {stn.get('state')}",
+                "coordinates": stn.get("ll"),
+                "data_start": earliest_start,
+                "data_end": latest_end,
+                "record_length_years": latest_end - earliest_start,
+                "all_ids": [s.split()[0] for s in sids],
+                "geocoded_location": location,
+                "nearby_stations": []
+            }
     except Exception:
         pass
 
     # Phase 2 & 3: Geocoding
     geo = geocode_census(location)
     if not geo:
-        return {"error": f"Could not geocode location: '{location}'. Try a more specific place name or zip code."}
+        return {"error": f"Location '{location}' is not a valid 5-digit zip code or airport/station ID. Please provide a 5-digit zip code (e.g. '33126') or a 4-letter airport code (e.g. 'KMIA') for better accuracy."}
 
     lat = geo["lat"]
     lon = geo["lon"]
     display_name = geo["display_name"]
+    # Handle display names like "1 MAIN ST, NEW YORK, NY, 10044" or "New York, NY"
+    target_state = None
+    parts = [p.strip() for p in display_name.split(",")]
+    for p in reversed(parts):
+        # Look for 2-letter state code
+        subparts = p.split()
+        for sp in subparts:
+            if len(sp) == 2 and sp.isupper() and sp.isalpha():
+                target_state = sp
+                break
+        if target_state: break
+    
+    # DEBUG
+    # print(f"DEBUG: location='{location}', display_name='{display_name}', target_state='{target_state}'")
 
     # Phase 4: ACIS Radius Search
-    bbox_offset = 0.3
+    bbox_offset = 0.5  # Broad search area
     bbox = f"{lon - bbox_offset},{lat - bbox_offset},{lon + bbox_offset},{lat + bbox_offset}"
 
     acis_payload = {
@@ -720,7 +662,6 @@ def find_best_station(location):
             "coordinates": [lon, lat],
         }
 
-    # "History King" Logic
     scored = []
     for stn in stations:
         valid_ranges = stn.get("valid_daterange", [])
@@ -740,10 +681,11 @@ def find_best_station(location):
             continue
 
         is_active = latest_end >= current_year - 1
-        
-        # Proximity (Euclidean distance for tie-breaker)
         stn_ll = stn.get("ll", [0, 0])
         dist = ((stn_ll[0] - lon)**2 + (stn_ll[1] - lat)**2)**0.5
+        
+        stn_state = stn.get("state")
+        state_match = stn_state == target_state if target_state else True
 
         sids = stn.get("sids", [])
         primary_id = sids[0].split()[0] if sids else "Unknown"
@@ -758,7 +700,19 @@ def find_best_station(location):
                     primary_id = sid_code
                     has_icao = True
 
+        # Scoring: 
+        # Active? +1000
+        # Earliest start? -1 point per year after 1800
+        # State match? +500
+        # Proximity? -200 per degree
+        score = 0
+        if is_active: score += 1000
+        score -= (earliest_start - 1800)
+        if state_match: score += 2000 # Heavily favor same-state stations
+        score -= (dist * 200)
+
         scored.append({
+            "score": score,
             "id": primary_id,
             "name": stn.get("name"),
             "state": stn.get("state"),
@@ -774,40 +728,16 @@ def find_best_station(location):
     if not scored:
         return {"error": "No stations with valid date ranges found."}
 
-    # History King Sorting:
-    # a. Must be active (end date >= current year - 1)
-    # b. Sort by earliest start date (ascending)
-    # c. Tie-breaker: proximity (ascending)
-    
-    # We'll filter active first, or just sort by is_active descending
-    scored.sort(key=lambda s: (not s["is_active"], s["earliest_start"], s["dist"]))
-
+    scored.sort(key=lambda s: s["score"], reverse=True)
     best = scored[0]
 
-    # Smart Threading Logic
-    # Find the oldest inactive station nearby that pre-dates the best active station
+    # Smart Threading Logic (Radius: ~10 miles)
     threaded_id = best["id"]
     combined_start = best["earliest_start"]
-    
     for s in scored:
-        # Check all stations (including active ones, though we usually thread with inactive)
-        # Radius: ~10 miles (0.15 deg)
         if s["dist"] < 0.15 and s["earliest_start"] < combined_start:
-            # Note: We prefer inactive stations for threading if possible, 
-            # but if an active one is even older, we'd use its start anyway.
-            # Usually, the 'best' active is already the oldest active.
             threaded_id = f"{best['id']}+{s['id']}"
             combined_start = s["earliest_start"]
-
-    # Build nearby stations list
-    nearby = []
-    for s in scored[:5]:
-        nearby.append({
-            "id": s["id"],
-            "name": f"{s['name']}, {s['state']}",
-            "record": f"{s['earliest_start']}-{s['latest_end']}",
-            "active": s["is_active"],
-        })
 
     return {
         "station_id": threaded_id,
@@ -818,6 +748,8 @@ def find_best_station(location):
         "record_length_years": best["latest_end"] - combined_start,
         "all_ids": best["all_ids"],
         "geocoded_location": display_name,
-        "nearby_stations": nearby,
+        "nearby_stations": [
+            f"{s['id']} — {s['name']}, {s['state']} ({s['earliest_start']}-{s['latest_end']}, {'active' if s['is_active'] else 'inactive'})"
+            for s in scored[1:6]
+        ],
     }
-
