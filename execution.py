@@ -1,6 +1,8 @@
 """Tool execution engine — executes xmacis2py function calls."""
 
 import xmacis2py
+import pandas as pd
+from concurrent.futures import ThreadPoolExecutor
 from xmacis2py import analysis as analysis_mod
 
 from formatter import format_error, format_result
@@ -43,6 +45,17 @@ def _validate_args(tool_name, args):
     return None
 
 
+def _fetch_station_data(station, args):
+    """Fetch data for a single station. Helper for concurrent execution."""
+    try:
+        s_args = args.copy()
+        s_args["station"] = station
+        df = xmacis2py.get_data(**s_args)
+        return station, df
+    except Exception:
+        return station, None
+
+
 def _run_get_data(args):
     """Execute get_data and return the result.
     
@@ -56,52 +69,48 @@ def _run_get_data(args):
         pandas DataFrame or CSV string.
     """
     station_str = args.get("station", "")
-    import pandas as pd
     
     try:
         # Handle multiple stations via comma
         if isinstance(station_str, str) and "," in station_str:
-            stations = [s.strip() for s in station_str.split(",")]
+            stations = [s.strip() for s in station_str.split(",") if s.strip()]
             dfs = []
-            for s in stations:
-                if not s: continue
-                s_args = args.copy()
-                s_args["station"] = s
-                try:
-                    df = xmacis2py.get_data(**s_args)
-                    if isinstance(df, pd.DataFrame):
-                        if "station" not in df.columns:
-                            df.insert(0, "station", s)
-                        dfs.append(df)
-                except Exception:
-                    continue
+            with ThreadPoolExecutor() as executor:
+                # Fetch all stations in parallel
+                results = list(executor.map(lambda s: _fetch_station_data(s, args), stations))
+
+            for s, df in results:
+                if isinstance(df, pd.DataFrame) and not df.empty:
+                    if "station" not in df.columns:
+                        df.insert(0, "station", s)
+                    dfs.append(df)
             return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
         # Handle backfilling via plus
         if isinstance(station_str, str) and "+" in station_str:
-            stations = [s.strip() for s in station_str.split("+")]
-            base_df = None
-            for s in stations:
-                if not s: continue
-                s_args = args.copy()
-                s_args["station"] = s
-                try:
-                    df = xmacis2py.get_data(**s_args)
-                    if not isinstance(df, pd.DataFrame) or df.empty:
-                        continue
-                    
-                    # Use Date as index for combining
-                    if "Date" in df.columns:
-                        df = df.set_index("Date")
-                    elif "valid_date" in df.columns:
-                        df = df.set_index("valid_date")
+            stations = [s.strip() for s in station_str.split("+") if s.strip()]
 
-                    if base_df is None:
-                        base_df = df
-                    else:
-                        base_df = base_df.combine_first(df)
-                except Exception:
+            with ThreadPoolExecutor() as executor:
+                # Fetch all stations in parallel
+                results_map = dict(executor.map(lambda s: _fetch_station_data(s, args), stations))
+
+            base_df = None
+            # Process in order of stations to maintain backfill priority
+            for s in stations:
+                df = results_map.get(s)
+                if not isinstance(df, pd.DataFrame) or df.empty:
                     continue
+
+                # Use Date as index for combining
+                if "Date" in df.columns:
+                    df = df.set_index("Date")
+                elif "valid_date" in df.columns:
+                    df = df.set_index("valid_date")
+
+                if base_df is None:
+                    base_df = df
+                else:
+                    base_df = base_df.combine_first(df)
             
             if base_df is None: return pd.DataFrame()
             
