@@ -1,34 +1,32 @@
 # ACIS2LLM
 
-Weather and climate data tools powered by NOAA RCC ACIS. Use as an MCP server in Claude Code, Cursor, and other AI tools.
+> **The professional weather & climate data layer for LLMs.**
 
-## Features
+ACIS2LLM connects your AI agents to the **Applied Climate Information System (ACIS)**, providing high-fidelity historical data and statistical analysis from NOAA Regional Climate Centers—no API keys, no rate limits, just pure climate science.
 
-- 26 weather/climate analysis tools via the `xmacis2py` Python library
-- **MCP server** — works with Claude Code, Claude Desktop, Cursor, and any MCP-compatible client
-- Station lookup by city name or zip code via geocoding
-- No API keys needed — all data comes from the public NOAA RCC ACIS database
+---
 
-## Installation and Usage
+## 🛠 Setup
 
-acis2llm is an MCP server so you can use all 26 weather/climate tools directly in Claude Code, Claude Desktop, Cursor, or any MCP-compatible client.
+ACIS2LLM is designed to run via **uv** for zero-config installation.
 
-Requires Python 3.10+ and [uv](https://github.com/astral-sh/uv).
-
-### Claude Code
-
+### 1. Claude Code / CLI
 ```bash
-claude mcp add acis2llm -- uvx --from acis2llm acis2llm-mcp
+claude mcp add ACIS2LLM -- uvx --from acis2llm acis2llm-mcp
 ```
 
-### Claude Desktop
+### 2. Gemini CLI
+```bash
+gemini mcp add ACIS2LLM -- uvx --from acis2llm acis2llm-mcp
+```
 
-Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+### 3. Claude Desktop
+Add this to your `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
-    "acis2llm": {
+    "ACIS2LLM": {
       "command": "uvx",
       "args": ["--from", "acis2llm", "acis2llm-mcp"]
     }
@@ -36,82 +34,58 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 }
 ```
 
-### Local development
+### 4. Cursor
+Add a new MCP server in **Settings > Features > MCP**:
+- **Name:** `ACIS2LLM`
+- **Type:** `command`
+- **Command:** `uvx --from acis2llm acis2llm-mcp`
 
-```bash
-claude mcp add acis2llm-dev -- uv run mcp_server.py
-```
+### 5. Universal MCP (Codex, OpenCode, Pi, etc.)
+ACIS2LLM supports any MCP-compliant environment. Generally, you only need to provide the startup command:
+`uvx --from acis2llm acis2llm-mcp`
 
-No API keys are needed — all weather data comes from the public NOAA RCC ACIS database.
+---
 
-## Tools Available
+## 🌪 Capabilities
 
-| Tool | Description |
-|------|-------------|
-| `get_data` | Download weather data from ACIS |
-| `period_mean` | Calculate period mean |
-| `period_median` | Calculate period median |
-| `period_mode` | Calculate period mode |
-| `period_percentile` | Calculate period percentile |
-| `period_standard_deviation` | Calculate period std dev |
-| `period_variance` | Calculate period variance |
-| `period_skewness` | Calculate period skewness |
-| `period_kurtosis` | Calculate period kurtosis |
-| `period_maximum` | Calculate period maximum |
-| `period_minimum` | Calculate period minimum |
-| `period_sum` | Calculate period sum |
-| `period_rankings` | Calculate period rankings |
-| `running_sum` | Calculate running sum |
-| `running_mean` | Calculate running mean |
-| `detrend_data` | Detrend time series data |
-| `number_of_days_at_or_below` | Count days at or below value |
-| `number_of_days_at_or_above` | Count days at or above value |
-| `number_of_days_below` | Count days below value |
-| `number_of_days_above` | Count days above value |
-| `number_of_days_at` | Count days at value |
-| `number_of_missing_days` | Count missing data days |
-| `monthly_totals_by_year` | Monthly aggregate across years |
-| `seasonal_summary` | Seasonal aggregate by year |
-| `frequency_of_occurrence` | How often a threshold is met |
-| `find_best_station` | Find nearest station by location |
+ACIS2LLM transforms your LLM into a climate researcher. It doesn't just "get the weather"—it performs statistical analysis over decades of historical records.
 
-### Common Station Codes
+### 1. Geospatial Discovery
+*   **`find_best_station`**: Don't guess IDs. Find the most reliable station near a city or zip code based on historical record length.
 
-Station codes are 4-letter identifiers (e.g., `KRAL`, `KLAX`, `KORD`).
+### 2. Statistical Core
+*   **Moments & Distribution**: Calculate `period_mean`, `period_median`, `period_mode`, `period_standard_deviation`, `period_variance`, `period_skewness`, and `period_kurtosis` over any period.
+*   **Percentiles**: Determine where a specific value falls in a historical context using `period_percentile`.
 
-### Common Variables
+### 3. Trend & Extreme Analysis
+*   **Threshold Counts**: "How many days were above 100°F last summer?" (`number_of_days_above`).
+*   **Rankings**: Automatically find records and extremes with `period_rankings`.
+*   **Detrending**: Remove linear trends from time series data with `detrend_data` to analyze cyclical patterns.
 
-| Variable | Description |
-|----------|-------------|
-| `tmax` | Maximum temperature |
-| `tmin` | Minimum temperature |
-| `tavg` | Average temperature |
-| `prcp` | Precipitation |
-| `snow` | Snowfall |
-| `awdb` | Average daily water balance |
-| `hdd` | Heating degree days |
-| `cdd` | Cooling degree days |
-| `gdd` | Growing degree days |
+### 4. Seasonal & Monthly Aggregates
+*   **`seasonal_summary`**: Analyze meteorological seasons (Winter, Spring, Summer, Fall) across years.
+*   **`monthly_totals_by_year`**: Compare April precipitation across the last 50 years.
+*   **`frequency_of_occurrence`**: Calculate the likelihood of specific events (e.g., "What is % chance of snow in October in Denver?").
 
-## Architecture
+---
 
-```
-MCP Client (Claude Code, Cursor, etc.)
-    │ stdio
-    ▼
-mcp_server.py ──▶ execution.py ──▶ xmacis2py ──▶ NOAA RCC ACIS
-                                 ──▶ composite_tools.py
-```
+## 📖 The Climate Cookbook
 
-## Data Sources & Credits
+| If you want to know... | Use this tool |
+| :--- | :--- |
+| "What was the hottest July in NYC history?" | `monthly_totals_by_year(station="KNYC", variable="tmax", aggregation="max", month="july")` |
+| "Is it likely to freeze in Miami during January?" | `frequency_of_occurrence(station="KMIA", variable="tmin", threshold=32, comparison="at_or_below", month="january")` |
+| "How does this year's rainfall compare to the 30-year average?" | `running_sum` + `period_mean` |
+| "Show me the top 5 snowiest winters in Buffalo." | `seasonal_summary(station="KBUF", season="winter", aggregation="sum")` |
 
-This project is built upon the following data sources and libraries:
+---
 
-- **Data Source**: All weather and climate data is provided by the **Regional Climate Centers (RCCs)** through the **Applied Climate Information System (ACIS)**. For more information about ACIS, visit [rcc-acis.org](https://www.rcc-acis.org/overview).
-- **Python Library**: This project uses [xmACIS2Py](https://github.com/edrewitz/xmACIS2Py), a Python library developed by **Eric J. Drewitz** (@edrewitz) for analyzing and retrieving ACIS climate data.
+## 🗄️ Data & Credits
 
-Special thanks to the Regional Climate Centers and Eric J. Drewitz for maintaining these essential tools for the climate community.
+All data is served in real-time from the **Regional Climate Centers (RCCs)** via the **Applied Climate Information System (ACIS)**.
 
-## License
+- **Primary Source**: [rcc-acis.org](https://www.rcc-acis.org/overview)
+- **Engine**: Built on [xmACIS2Py](https://github.com/edrewitz/xmACIS2Py) by Eric J. Drewitz (@edrewitz).
 
-MIT
+---
+**License**: MIT | **Author**: yenba
