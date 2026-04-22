@@ -22,7 +22,6 @@ except ImportError:
 from execution import VARIABLE_COLUMN_MAP
 from config import CENSUS_GEOCODER_URL
 
-NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 ACIS_STNMETA_URL = "https://data.rcc-acis.org/StnMeta"
 
 
@@ -527,172 +526,168 @@ def is_zip_code(location: str) -> bool:
 
 
 def find_best_station(location):
-    """Find the ACIS station with the longest data record near a location.
+    """Find the ACIS station with the best data record near a location.
 
-    Geocodes the location via OpenStreetMap Nominatim, searches ACIS for
-    nearby stations, and returns the active station with the earliest start
-    date for core variables (tmax, prcp).
-
-    Args:
-        location: City name, zip code, or place description
-                  (e.g. "Fort Myers", "33901", "Denver, CO").
+    Follows a waterfall logic:
+    1. Direct ID Match (ACIS stnmeta)
+    2. Zip Code Centroid (Census Geocoder)
+    3. City/State Geocoding (Census Geocoder)
+    4. ACIS Radius Search (if coordinates found)
 
     Returns:
         Dict with 'station_id', 'name', 'state', 'coordinates',
         'data_start', 'data_end', 'all_ids', and 'nearby_stations'.
     """
-    # Step 1: Geocode the location (with retry for rate limits)
-    geo_params = {
-        "q": location,
-        "format": "json",
-        "limit": 1,
-        "countrycodes": "us",
-    }
-    geo_resp = None
-    for attempt in range(4):
-        geo_resp = requests.get(
-            NOMINATIM_URL,
-            params=geo_params,
-            headers={"User-Agent": "acis2llm/0.1 (https://github.com/yenba/acis2LLM; climate-data-tool)"},
-            timeout=10,
-        )
-        if geo_resp.status_code == 429:
-            time.sleep(2 * (attempt + 1))  # 2s, 4s, 6s, 8s backoff
-            continue
-        geo_resp.raise_for_status()
-        break
-    else:
-        return {"error": "Nominatim rate limit exceeded after retries. Please try again in a minute."}
-    geo_results = geo_resp.json()
+    location = location.strip()
+    current_year = datetime.now().year
 
-    if not geo_results:
+    # Phase 1: Direct ID Match
+    acis_payload = {
+        "sids": location,
+        "meta": "name,state,ll,valid_daterange,sids",
+    }
+    try:
+        resp = requests.post(ACIS_STNMETA_URL, json=acis_payload, timeout=10)
+        resp.raise_for_status()
+        meta = resp.json().get("meta", [])
+        # If exactly one active station matches, return it
+        if len(meta) == 1:
+            stn = meta[0]
+            # Check if active
+            valid_ranges = stn.get("valid_daterange", [])
+            latest_end = 0
+            earliest_start = 9999
+            for vr in valid_ranges:
+                if vr and len(vr) >= 2:
+                    try:
+                        start_y = int(vr[0][:4])
+                        end_y = int(vr[1][:4])
+                        latest_end = max(latest_end, end_y)
+                        earliest_start = min(earliest_start, start_y)
+                    except (ValueError, IndexError):
+                        continue
+            
+            if latest_end >= current_year - 1:
+                # Return this station
+                sids = stn.get("sids", [])
+                primary_id = sids[0].split()[0] if sids else location
+                for sid_entry in sids:
+                    sid_code = sid_entry.split()[0]
+                    if (sid_code.startswith("K") and len(sid_code) == 4) or \
+                       (sid_code.startswith(("PA", "PH")) and len(sid_code) == 4):
+                        primary_id = sid_code
+                        break
+                
+                return {
+                    "station_id": primary_id,
+                    "name": f"{stn.get('name')}, {stn.get('state')}",
+                    "coordinates": stn.get("ll"),
+                    "data_start": earliest_start,
+                    "data_end": latest_end,
+                    "record_length_years": latest_end - earliest_start,
+                    "all_ids": [s.split()[0] for s in sids],
+                    "geocoded_location": location,
+                    "nearby_stations": []
+                }
+    except Exception:
+        pass
+
+    # Phase 2 & 3: Geocoding
+    geo = geocode_census(location)
+    if not geo:
         return {"error": f"Could not geocode location: '{location}'. Try a more specific place name or zip code."}
 
-    lat = float(geo_results[0]["lat"])
-    lon = float(geo_results[0]["lon"])
-    display_name = geo_results[0].get("display_name", location)
+    lat = geo["lat"]
+    lon = geo["lon"]
+    display_name = geo["display_name"]
 
-    # Step 2: Query ACIS for stations in a bounding box (~20 mile radius)
+    # Phase 4: ACIS Radius Search
     bbox_offset = 0.3
     bbox = f"{lon - bbox_offset},{lat - bbox_offset},{lon + bbox_offset},{lat + bbox_offset}"
 
     acis_payload = {
         "bbox": bbox,
         "meta": "name,state,ll,valid_daterange,sids",
-        "elems": "maxt",
     }
-    acis_resp = requests.post(
-        ACIS_STNMETA_URL,
-        json=acis_payload,
-        headers={"Content-Type": "application/json"},
-        timeout=15,
-    )
-    acis_resp.raise_for_status()
-    acis_data = acis_resp.json()
+    try:
+        resp = requests.post(ACIS_STNMETA_URL, json=acis_payload, timeout=15)
+        resp.raise_for_status()
+        stations = resp.json().get("meta", [])
+    except Exception as e:
+        return {"error": f"ACIS metadata query failed: {str(e)}"}
 
-    stations = acis_data.get("meta", [])
     if not stations:
         return {
-            "error": f"No ACIS stations found near '{location}' (lat={lat:.4f}, lon={lon:.4f}). Try a larger city or different location.",
+            "error": f"No ACIS stations found near '{location}' (lat={lat:.4f}, lon={lon:.4f}).",
             "geocoded_location": display_name,
             "coordinates": [lon, lat],
         }
 
-    # Step 3: Score and rank stations
-    current_year = datetime.now().year
+    # "History King" Logic
     scored = []
-
     for stn in stations:
         valid_ranges = stn.get("valid_daterange", [])
-        sids = stn.get("sids", [])
-        name = stn.get("name", "Unknown")
-        state = stn.get("state", "")
-        ll = stn.get("ll", [None, None])
-
-        # Find the earliest start and latest end across all variable ranges
-        earliest_start = None
-        latest_end = None
+        earliest_start = 9999
+        latest_end = 0
         for vr in valid_ranges:
-            if not vr or len(vr) < 2:
-                continue
-            start_str, end_str = vr[0], vr[1]
-            if not start_str or not end_str:
-                continue
-            try:
-                start_y = int(start_str[:4])
-                end_y = int(end_str[:4])
-            except (ValueError, IndexError):
-                continue
-            if earliest_start is None or start_y < earliest_start:
-                earliest_start = start_y
-            if latest_end is None or end_y > latest_end:
-                latest_end = end_y
-
-        if earliest_start is None or latest_end is None:
+            if vr and len(vr) >= 2:
+                try:
+                    start_y = int(vr[0][:4])
+                    end_y = int(vr[1][:4])
+                    earliest_start = min(earliest_start, start_y)
+                    latest_end = max(latest_end, end_y)
+                except (ValueError, IndexError):
+                    continue
+        
+        if earliest_start == 9999:
             continue
 
-        # Filter out stations that haven't reported recently
         is_active = latest_end >= current_year - 1
+        
+        # Proximity (Euclidean distance for tie-breaker)
+        stn_ll = stn.get("ll", [0, 0])
+        dist = ((stn_ll[0] - lon)**2 + (stn_ll[1] - lat)**2)**0.5
 
-        # Extract the primary ACIS sid (prefer ICAO codes)
-        # CONUS ICAO codes start with K, Alaska with PA, Hawaii with PH
-        primary_id = None
+        sids = stn.get("sids", [])
+        primary_id = sids[0].split()[0] if sids else "Unknown"
         has_icao = False
         all_ids = []
         for sid_entry in sids:
-            sid_str = sid_entry if isinstance(sid_entry, str) else str(sid_entry)
-            # sids come as "ID network_code" pairs, e.g. "KRSW 1"
-            sid_code = sid_str.split()[0] if " " in sid_str else sid_str
+            sid_code = sid_entry.split()[0]
             all_ids.append(sid_code)
-            is_icao = (
-                (sid_code.startswith("K") and len(sid_code) == 4)
-                or (sid_code.startswith(("PA", "PH")) and len(sid_code) == 4)
-            )
-            if is_icao and primary_id is None:
-                primary_id = sid_code
-                has_icao = True
-
-        # Fall back to first sid if no ICAO code
-        if primary_id is None and all_ids:
-            primary_id = all_ids[0]
-
-        record_length = latest_end - earliest_start
+            if (sid_code.startswith("K") and len(sid_code) == 4) or \
+               (sid_code.startswith(("PA", "PH")) and len(sid_code) == 4):
+                if not has_icao:
+                    primary_id = sid_code
+                    has_icao = True
 
         scored.append({
             "id": primary_id,
-            "name": name,
-            "state": state,
-            "coordinates": ll,
+            "name": stn.get("name"),
+            "state": stn.get("state"),
+            "coordinates": stn_ll,
             "earliest_start": earliest_start,
             "latest_end": latest_end,
-            "record_length": record_length,
             "is_active": is_active,
             "has_icao": has_icao,
-            "all_ids": all_ids,
+            "dist": dist,
+            "all_ids": all_ids
         })
 
     if not scored:
-        return {
-            "error": f"Stations found near '{location}' but none had valid date ranges.",
-            "geocoded_location": display_name,
-            "coordinates": [lon, lat],
-        }
+        return {"error": "No stations with valid date ranges found."}
 
-    # Sort: active stations first, then by record length (longest first)
-    scored.sort(key=lambda s: (s["is_active"], s["record_length"]), reverse=True)
+    # History King Sorting:
+    # a. Must be active (end date >= current year - 1)
+    # b. Sort by earliest start date (ascending)
+    # c. Tie-breaker: proximity (ascending)
+    
+    # We'll filter active first, or just sort by is_active descending
+    scored.sort(key=lambda s: (not s["is_active"], s["earliest_start"], s["dist"]))
 
-    # Prefer an active ICAO station if its record is within 90% of the longest
     best = scored[0]
-    if best["is_active"] and not best["has_icao"]:
-        longest = best["record_length"]
-        for s in scored:
-            if (s["is_active"]
-                    and s["has_icao"]
-                    and s["record_length"] >= longest * 0.9):
-                best = s
-                break
 
-    # Build nearby stations list (top 5)
+    # Build nearby stations list
     nearby = []
     for s in scored[:5]:
         nearby.append({
@@ -708,8 +703,9 @@ def find_best_station(location):
         "coordinates": best["coordinates"],
         "data_start": best["earliest_start"],
         "data_end": best["latest_end"],
-        "record_length_years": best["record_length"],
+        "record_length_years": best["latest_end"] - best["earliest_start"],
         "all_ids": best["all_ids"],
         "geocoded_location": display_name,
         "nearby_stations": nearby,
     }
+
