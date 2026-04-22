@@ -1,0 +1,201 @@
+# acis2LLM
+
+A local LLM-powered CLI tool that uses function calling to query and analyze weather/climate data via the `xmacis2py` Python library.
+
+## Features
+
+- Natural language queries for weather and climate data
+- Local LLM integration with OpenAI-compatible API
+- Function calling for structured tool execution
+- Full conversation context persistence across sessions
+- Support for 20+ xmacis2py analysis tools
+
+## Installation
+
+Requires Python 3.10+ and [uv](https://github.com/astral-sh/uv).
+
+```bash
+uv sync
+uv run acis2llm --setup
+```
+
+Or run in a venv:
+
+```bash
+uv venv
+source .venv/bin/activate   # On macOS/Linux
+uv pip install -e .
+acis2llm --setup
+```
+
+## First-Time Setup
+
+Run `acis2llm` for the first time to configure your LLM endpoint:
+
+```bash
+acis2llm
+```
+
+The setup wizard will:
+1. Prompt for an OpenAI-compatible endpoint URL (default: `http://localhost:11434/v1`)
+2. List available models from your endpoint
+3. Let you select a model
+4. Prompt for an API key (if required by your endpoint)
+
+## Usage
+
+```bash
+uv run acis2llm
+```
+
+Or activate the venv first:
+
+```bash
+uv venv
+source .venv/bin/activate
+acis2llm
+```
+
+Then type your questions in natural language, such as:
+- "What's the mean maximum temperature at KRAL for 2023?"
+- "Compare KRAL and KLAX precipitation for 2024"
+- "Show me running means for tavg at KRAL last summer"
+
+### CLI Flags
+
+- `--setup` — Run setup wizard manually
+- `--reset` — Reset configuration
+- `--endpoint URL` — Override endpoint URL
+- `--model MODEL` — Override model name
+- `--api-key KEY` — Override API key
+- `-m MODEL` — Short form for `--model`
+
+### In-App Commands
+
+- `help` — Show available commands and xmacis2py basics
+- `clear` — Clear conversation history
+- `reset` — Reset config and re-run setup
+- `context` — Show current conversation length
+- `quit` / `exit` / `q` — Exit the tool
+
+## MCP Server
+
+acis2llm includes an MCP server so you can use all 26 weather/climate tools directly in Claude Code, Claude Desktop, Cursor, or any MCP-compatible client.
+
+### Claude Code
+
+```bash
+claude mcp add acis2llm -- uvx --from acis2llm acis2llm-mcp
+```
+
+### Claude Desktop
+
+Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "acis2llm": {
+      "command": "uvx",
+      "args": ["--from", "acis2llm", "acis2llm-mcp"]
+    }
+  }
+}
+```
+
+### Local development
+
+```bash
+claude mcp add acis2llm-dev -- uv run mcp_server.py
+```
+
+No API keys are needed — all weather data comes from the public NOAA RCC ACIS database.
+
+## Configuration
+
+Configuration is stored in `~/.acis2llm/config.yaml`:
+
+```yaml
+endpoint_url: http://localhost:11434/v1
+api_key: ""
+model: qwen2.5:7b
+```
+
+Environment variables can override config values:
+- `ACIS2LLM_ENDPOINT`
+- `ACIS2LLM_API_KEY`
+- `ACIS2LLM_MODEL`
+
+## Tools Available
+
+| Tool | Description |
+|------|-------------|
+| `get_data` | Download weather data from ACIS |
+| `period_mean` | Calculate period mean |
+| `period_median` | Calculate period median |
+| `period_mode` | Calculate period mode |
+| `period_percentile` | Calculate period percentile |
+| `period_standard_deviation` | Calculate period std dev |
+| `period_variance` | Calculate period variance |
+| `period_skewness` | Calculate period skewness |
+| `period_kurtosis` | Calculate period kurtosis |
+| `period_maximum` | Calculate period maximum |
+| `period_minimum` | Calculate period minimum |
+| `period_sum` | Calculate period sum |
+| `period_rankings` | Calculate period rankings |
+| `running_sum` | Calculate running sum |
+| `running_mean` | Calculate running mean |
+| `detrend_data` | Detrend time series data |
+| `number_of_days_at_or_below` | Count days at or below value |
+| `number_of_days_at_or_above` | Count days at or above value |
+| `number_of_days_below` | Count days below value |
+| `number_of_days_above` | Count days above value |
+| `number_of_days_at` | Count days at value |
+| `number_of_missing_days` | Count missing data days |
+
+### Common Station Codes
+
+Station codes are 4-letter identifiers (e.g., `KRAL`, `KLAX`, `KORD`).
+
+### Common Variables
+
+| Variable | Description |
+|----------|-------------|
+| `tmax` | Maximum temperature |
+| `tmin` | Minimum temperature |
+| `tavg` | Average temperature |
+| `prcp` | Precipitation |
+| `snow` | Snowfall |
+| `awdb` | Average daily water balance |
+| `hdd` | Heating degree days |
+| `cdd` | Cooling degree days |
+| `gdd` | Growing degree days |
+
+## Architecture
+
+```
+User ──▶ CLI Tool ──▶ LLM (local) ──▶ xmacis2py
+          │              │
+          │◀─────────────┤
+          │  Function    │
+          │    calling   │
+          │              │
+          ▼              ▼
+    history.json    OpenAI compat API
+```
+
+## OpenCode Agent
+
+This project includes an [OpenCode](https://opencode.ai) agent in `.opencode/agents/weather.md`.
+
+To use it, open this project in OpenCode and mention the `@weather` agent:
+
+```
+@weather what's the average temperature at KRAL for 2023?
+```
+
+The agent runs the acis2llm CLI under the hood and presents results with proper context, units, and analysis.
+
+## License
+
+MIT
