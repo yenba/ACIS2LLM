@@ -37,8 +37,5 @@ Thumbs.db
 # OpenCode
 .opencode/
 
-# Test fixture data (regenerate from ACIS)
-XMACIS2 DATA/
-
 # Dev planning docs (local only)
 .internal/
