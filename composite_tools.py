@@ -37,7 +37,7 @@ def geocode_census(location: str):
         try:
             # Zippopotam.us is free, no key, and great for bare zip codes
             zip_only = location.split("-")[0]
-            resp = requests.get(f"http://api.zippopotam.us/us/{zip_only}", timeout=10)
+            resp = requests.get(f"https://api.zippopotam.us/us/{zip_only}", timeout=10)
             if resp.status_code == 200:
                 data = resp.json()
                 if data.get("places"):
