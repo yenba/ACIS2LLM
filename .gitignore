@@ -41,6 +41,4 @@ Thumbs.db
 XMACIS2 DATA/
 
 # Dev planning docs (local only)
-PLAN.md
-docs/superpowers/
-docs/test-and-iterate.md
+.internal/
