@@ -1,14 +1,14 @@
 # acis2LLM
 
-A local LLM-powered CLI tool that uses function calling to query and analyze weather/climate data via the `xmacis2py` Python library.
+Weather and climate data tools powered by NOAA RCC ACIS. Use as a standalone CLI with a local LLM, or as an MCP server in Claude Code, Cursor, and other AI tools.
 
 ## Features
 
-- Natural language queries for weather and climate data
-- Local LLM integration with OpenAI-compatible API
-- Function calling for structured tool execution
-- Full conversation context persistence across sessions
-- Support for 20+ xmacis2py analysis tools
+- 26 weather/climate analysis tools via the `xmacis2py` Python library
+- **MCP server** — works with Claude Code, Claude Desktop, Cursor, and any MCP-compatible client
+- **CLI** — standalone tool with local LLM integration (OpenAI-compatible API)
+- Station lookup by city name or zip code via geocoding
+- No API keys needed — all data comes from the public NOAA RCC ACIS database
 
 ## Installation
 
@@ -152,6 +152,10 @@ Environment variables can override config values:
 | `number_of_days_above` | Count days above value |
 | `number_of_days_at` | Count days at value |
 | `number_of_missing_days` | Count missing data days |
+| `monthly_totals_by_year` | Monthly aggregate across years |
+| `seasonal_summary` | Seasonal aggregate by year |
+| `frequency_of_occurrence` | How often a threshold is met |
+| `find_best_station` | Find nearest station by location |
 
 ### Common Station Codes
 
@@ -174,27 +178,15 @@ Station codes are 4-letter identifiers (e.g., `KRAL`, `KLAX`, `KORD`).
 ## Architecture
 
 ```
-User ──▶ CLI Tool ──▶ LLM (local) ──▶ xmacis2py
-          │              │
-          │◀─────────────┤
-          │  Function    │
-          │    calling   │
-          │              │
-          ▼              ▼
-    history.json    OpenAI compat API
+MCP Client (Claude Code, Cursor, etc.)
+    │ stdio
+    ▼
+mcp_server.py ──▶ execution.py ──▶ xmacis2py ──▶ NOAA RCC ACIS
+                                 ──▶ composite_tools.py
+
+CLI Mode:
+User ──▶ cli.py ──▶ LLM (local) ──▶ execution.py ──▶ xmacis2py ──▶ NOAA RCC ACIS
 ```
-
-## OpenCode Agent
-
-This project includes an [OpenCode](https://opencode.ai) agent in `.opencode/agents/weather.md`.
-
-To use it, open this project in OpenCode and mention the `@weather` agent:
-
-```
-@weather what's the average temperature at KRAL for 2023?
-```
-
-The agent runs the acis2llm CLI under the hood and presents results with proper context, units, and analysis.
 
 ## License
 
