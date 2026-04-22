@@ -7,25 +7,24 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from execution import execute_tool_call
-from tools import TOOL_DEFINITIONS
+from tools import TOOL_REGISTRY
 
 
 def _convert_tools():
-    """Convert OpenAI-style tool definitions to MCP Tool objects.
+    """Convert registry tool definitions to MCP Tool objects.
 
     Returns:
         Tuple of (list of Tool objects, set of valid tool names).
     """
     tools = []
     names = set()
-    for defn in TOOL_DEFINITIONS:
-        func = defn["function"]
-        name = func["name"]
+    for defn in TOOL_REGISTRY:
+        name = defn["name"]
         tools.append(
             Tool(
                 name=name,
-                description=func.get("description", ""),
-                inputSchema=func.get("parameters", {"type": "object", "properties": {}}),
+                description=defn.get("description", ""),
+                inputSchema=defn.get("inputSchema", {"type": "object", "properties": {}}),
             )
         )
         names.add(name)

@@ -1,46 +1,7 @@
 """Result formatting for xmacis2py outputs."""
 
 import pandas as pd
-
-
-ANALYSIS_FUNCTIONS = {
-    "period_mean",
-    "period_median",
-    "period_mode",
-    "period_percentile",
-    "period_standard_deviation",
-    "period_variance",
-    "period_skewness",
-    "period_kurtosis",
-    "period_maximum",
-    "period_minimum",
-    "period_sum",
-}
-
-DATAFRAME_FUNCTIONS = {
-    "get_data",
-    "period_rankings",
-    "running_sum",
-    "running_mean",
-    "detrend_data",
-}
-
-THRESHOLD_FUNCTIONS = {
-    "number_of_days_at_or_below",
-    "number_of_days_at_or_above",
-    "number_of_days_below",
-    "number_of_days_above",
-    "number_of_days_at",
-}
-
-MISSING_DAYS_FUNCTION = "number_of_missing_days"
-
-COMPOSITE_FUNCTIONS = {
-    "monthly_totals_by_year",
-    "seasonal_summary",
-    "frequency_of_occurrence",
-    "find_best_station",
-}
+from tools import TOOL_MAP
 
 MAX_DISPLAY_ROWS = 60
 
@@ -248,7 +209,7 @@ def format_error(error_msg):
 
 
 def format_result(result, tool_name):
-    """Automatically select the appropriate formatter based on tool name.
+    """Automatically select the appropriate formatter based on tool category.
 
     Args:
         result: The tool result (DataFrame, scalar, or string).
@@ -257,19 +218,25 @@ def format_result(result, tool_name):
     Returns:
         Formatted string.
     """
-    if tool_name == "get_data":
+    tool_info = TOOL_MAP.get(tool_name)
+    if not tool_info:
+        return format_analysis_result(result, tool_name)
+
+    category = tool_info["category"]
+
+    if category == "data":
         return format_get_data_result(result)
-    elif tool_name in ANALYSIS_FUNCTIONS:
+    elif category == "analysis_scalar":
         return format_analysis_result(result, tool_name)
-    elif tool_name in THRESHOLD_FUNCTIONS:
+    elif category == "analysis_dataframe":
+        return format_analysis_result(result, tool_name)
+    elif category == "threshold":
         return format_threshold_result(result, tool_name)
-    elif tool_name == MISSING_DAYS_FUNCTION:
+    elif category == "missing_days":
         return format_missing_days_result(result)
-    elif tool_name in DATAFRAME_FUNCTIONS:
-        return format_analysis_result(result, tool_name)
-    elif tool_name == "find_best_station":
+    elif category == "composite_station":
         return format_station_result(result)
-    elif tool_name in COMPOSITE_FUNCTIONS:
+    elif category == "composite":
         return format_composite_result(result, tool_name)
     else:
         return format_analysis_result(result, tool_name)

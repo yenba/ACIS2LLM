@@ -1,26 +1,45 @@
 import pandas as pd
-from execution import _run_get_data
+from execution import _run_get_data, execute_tool_call
 import pytest
 
-def test_threaded_station_data(mocker):
-    # Mock _get_function to return a dummy get_data
-    mock_func = mocker.patch("execution._get_function")
+def test_run_get_data(mocker):
+    mock_get_data = mocker.patch("xmacis2py.get_data")
+    mock_df = pd.DataFrame({"station": ["KNYC"], "valid_date": ["2023-01-01"], "Maximum Temperature": [45]})
+    mock_get_data.return_value = mock_df
     
-    def dummy_get_data(**kwargs):
-        station = kwargs.get("station")
-        if station == "KPHX":
-            return pd.DataFrame({"station": ["KPHX", "KPHX"], "Date": ["1950-01-01", "1950-01-02"], "Maximum Temperature": [100, pd.NA]})
-        elif station == "026486":
-            return pd.DataFrame({"station": ["026486", "026486"], "Date": ["1950-01-01", "1950-01-02"], "Maximum Temperature": [pd.NA, 95]})
-        return pd.DataFrame()
+    result = _run_get_data({"station": "KNYC", "start_date": "2023-01-01", "end_date": "2023-01-01"})
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 1
+    assert result["station"].iloc[0] == "KNYC"
 
-    mock_func.return_value = dummy_get_data
+def test_execute_tool_call_get_data(mocker):
+    mock_get_data = mocker.patch("xmacis2py.get_data")
+    mock_df = pd.DataFrame({"station": ["KNYC"], "valid_date": ["2023-01-01"], "Maximum Temperature": [45]})
+    mock_get_data.return_value = mock_df
     
-    df = _run_get_data({"station": "KPHX+026486"})
+    result = execute_tool_call("get_data", {"station": "KNYC"})
+    assert "--- Data Retrieved ---" in result
+    assert "KNYC" in result
+
+def test_execute_tool_call_analysis(mocker):
+    # Mock data fetch
+    mock_get_data = mocker.patch("xmacis2py.get_data")
+    mock_df = pd.DataFrame({"station": ["KNYC"], "valid_date": ["2023-01-01"], "Maximum Temperature": [45]})
+    mock_get_data.return_value = mock_df
     
-    # Should prioritize KPHX, backfill with 026486
-    assert len(df) == 2
-    assert df["Maximum Temperature"].iloc[0] == 100
-    assert df["Maximum Temperature"].iloc[1] == 95
-    # Should reflect threaded ID
-    assert all(df["station"] == "KPHX+026486")
+    # Mock analysis
+    mock_analysis = mocker.patch("xmacis2py.analysis.period_mean")
+    mock_analysis.return_value = 45.0
+    
+    result = execute_tool_call("period_mean", {
+        "station": "KNYC", 
+        "variable": "tmax", 
+        "start_date": "2023-01-01", 
+        "end_date": "2023-01-01"
+    })
+    assert "--- period_mean Result ---" in result
+    assert "45.0" in result
+
+def test_execute_tool_call_missing_args():
+    result = execute_tool_call("period_mean", {"station": "KNYC"})
+    assert "ERROR: Missing required argument(s):" in result

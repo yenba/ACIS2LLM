@@ -1,6 +1,10 @@
 """Tool execution engine — executes xmacis2py function calls."""
 
+import xmacis2py
+from xmacis2py import analysis as analysis_mod
+
 from formatter import format_error, format_result
+from tools import TOOL_MAP
 
 # Map short variable codes to get_data column names
 VARIABLE_COLUMN_MAP = {
@@ -17,124 +21,9 @@ VARIABLE_COLUMN_MAP = {
     "tdpa": "Average Temperature Departure",
 }
 
-# Try to import xmacis2py at module load
-try:
-    import xmacis2py
-    XMACIS2PY_AVAILABLE = True
-except ImportError:
-    XMACIS2PY_AVAILABLE = False
-
-# Analysis functions live in xmacis2py.analysis in v2.x
-try:
-    from xmacis2py import analysis as analysis_mod
-    ANALYSIS_AVAILABLE = True
-except ImportError:
-    ANALYSIS_AVAILABLE = False
-
-
-# Map tool names to their analysis module function names
-_ANALYSIS_TOOL_MAP = {
-    "period_mean": "period_mean",
-    "period_median": "period_median",
-    "period_mode": "period_mode",
-    "period_percentile": "period_percentile",
-    "period_standard_deviation": "period_standard_deviation",
-    "period_variance": "period_variance",
-    "period_skewness": "period_skewness",
-    "period_kurtosis": "period_kurtosis",
-    "period_maximum": "period_maximum",
-    "period_minimum": "period_minimum",
-    "period_sum": "period_sum",
-    "period_rankings": "period_rankings",
-    "running_sum": "running_sum",
-    "running_mean": "running_mean",
-    "detrend_data": "detrend_data",
-    "number_of_days_at_or_below": "number_of_days_at_or_below_value",
-    "number_of_days_at_or_above": "number_of_days_at_or_above_value",
-    "number_of_days_below": "number_of_days_below_value",
-    "number_of_days_above": "number_of_days_above_value",
-    "number_of_days_at": "number_of_days_at_value",
-    "number_of_missing_days": "number_of_missing_days",
-}
-
-_COMPOSITE_TOOLS = {
-    "monthly_totals_by_year",
-    "seasonal_summary",
-    "frequency_of_occurrence",
-    "find_best_station",
-}
-
-# Threshold functions that take an extra 'value' argument
-_THRESHOLD_TOOLS = {
-    "number_of_days_at_or_below",
-    "number_of_days_at_or_above",
-    "number_of_days_below",
-    "number_of_days_above",
-    "number_of_days_at",
-}
-
-_REQUIRED_ARGS = {
-    "get_data": ["station"],
-    "period_mean": ["station", "variable", "start_date", "end_date"],
-    "period_median": ["station", "variable", "start_date", "end_date"],
-    "period_mode": ["station", "variable", "start_date", "end_date"],
-    "period_percentile": ["station", "variable", "start_date", "end_date", "percentile"],
-    "period_standard_deviation": ["station", "variable", "start_date", "end_date"],
-    "period_variance": ["station", "variable", "start_date", "end_date"],
-    "period_skewness": ["station", "variable", "start_date", "end_date"],
-    "period_kurtosis": ["station", "variable", "start_date", "end_date"],
-    "period_maximum": ["station", "variable", "start_date", "end_date"],
-    "period_minimum": ["station", "variable", "start_date", "end_date"],
-    "period_sum": ["station", "variable", "start_date", "end_date"],
-    "period_rankings": ["station", "variable", "start_date", "end_date"],
-    "running_sum": ["station", "variable", "start_date", "end_date"],
-    "running_mean": ["station", "variable", "start_date", "end_date"],
-    "detrend_data": ["station", "variable", "start_date", "end_date"],
-    "number_of_days_at_or_below": ["station", "variable", "start_date", "end_date", "value"],
-    "number_of_days_at_or_above": ["station", "variable", "start_date", "end_date", "value"],
-    "number_of_days_below": ["station", "variable", "start_date", "end_date", "value"],
-    "number_of_days_above": ["station", "variable", "start_date", "end_date", "value"],
-    "number_of_days_at": ["station", "variable", "start_date", "end_date", "value"],
-    "number_of_missing_days": ["station", "variable", "start_date", "end_date"],
-    "monthly_totals_by_year": ["station", "variable", "month"],
-    "seasonal_summary": ["station", "variable", "season"],
-    "frequency_of_occurrence": ["station", "variable", "threshold", "comparison"],
-    "find_best_station": ["location"],
-}
-
-
-def _get_function(tool_name):
-    """Get the xmacis2py function for a given tool name.
-
-    Args:
-        tool_name: Name of the tool.
-
-    Returns:
-        The function object.
-
-    Raises:
-        ImportError: If xmacis2py is not installed.
-        AttributeError: If the function doesn't exist.
-    """
-    if not XMACIS2PY_AVAILABLE:
-        raise ImportError("xmacis2py is not installed. Install with: pip install xmacis2py")
-
-    if tool_name == "get_data":
-        return getattr(xmacis2py, "get_data")
-
-    # Analysis functions are in xmacis2py.analysis (v2.x)
-    func_name = _ANALYSIS_TOOL_MAP.get(tool_name)
-    if not func_name:
-        raise AttributeError(f"Unknown tool: {tool_name}")
-
-    if not ANALYSIS_AVAILABLE:
-        raise ImportError(f"Could not import xmacis2py.analysis. Is xmacis2py v2.x installed?")
-
-    return getattr(analysis_mod, func_name)
-
 
 def _validate_args(tool_name, args):
-    """Check that all required arguments are present.
+    """Check that all required arguments are present based on the tool's inputSchema.
 
     Args:
         tool_name: Name of the tool.
@@ -143,7 +32,11 @@ def _validate_args(tool_name, args):
     Returns:
         Error message string if missing args, or None if all good.
     """
-    required = _REQUIRED_ARGS.get(tool_name, [])
+    tool_info = TOOL_MAP.get(tool_name)
+    if not tool_info:
+        return f"Unknown tool: {tool_name}"
+
+    required = tool_info["inputSchema"].get("required", [])
     missing = [arg for arg in required if arg not in args or args[arg] is None]
     if missing:
         return f"Missing required argument(s): {', '.join(missing)}"
@@ -151,133 +44,49 @@ def _validate_args(tool_name, args):
 
 
 def _run_get_data(args):
-    """Execute get_data and return the DataFrame.
-
-    Handles multiple stations by querying them sequentially if needed.
+    """Execute get_data and return the result.
 
     Args:
         args: Dict of get_data arguments.
 
     Returns:
-        pandas DataFrame.
-
-    Raises:
-        Exception: If get_data fails.
+        pandas DataFrame or CSV string.
     """
-    func = _get_function("get_data")
-    
-    # Extract station string
-    station_str = args.get("station", "")
-    
-    # If multiple stations are requested via comma-separated string
-    if isinstance(station_str, str) and "," in station_str:
-        import pandas as pd
-        stations = [s.strip() for s in station_str.split(",")]
-        dfs = []
-        for s in stations:
-            if not s:
-                continue
-            s_args = args.copy()
-            s_args["station"] = s
-            try:
-                df = func(**s_args)
-                # Ensure it's a DataFrame
-                if isinstance(df, pd.DataFrame):
-                    # Add station column to distinguish results
-                    if "station" not in df.columns:
-                        df.insert(0, "station", s)
-                    dfs.append(df)
-            except Exception as e:
-                # Log error but continue with other stations if some succeed?
-                # For now, let's re-raise if it's a fatal error, 
-                # but if we have multiple stations, maybe we should collect what we can.
-                raise e
-        
-        if not dfs:
-            return pd.DataFrame()
-            
-        return pd.concat(dfs, ignore_index=True)
-
-    # If multiple stations are requested via '+' for smart merging (backfilling)
-    if isinstance(station_str, str) and "+" in station_str:
-        import pandas as pd
-        stations = [s.strip() for s in station_str.split("+")]
-        base_df = None
-        
-        for s in stations:
-            if not s:
-                continue
-            s_args = args.copy()
-            s_args["station"] = s
-            try:
-                df = func(**s_args)
-                if not isinstance(df, pd.DataFrame) or df.empty:
-                    continue
-                
-                # We need a consistent index for combine_first to work correctly.
-                # Usually 'Date' is the best candidate if it exists.
-                has_date = "Date" in df.columns
-                if has_date:
-                    df = df.set_index("Date")
-                
-                if base_df is None:
-                    base_df = df
-                else:
-                    base_df = base_df.combine_first(df)
-            except Exception as e:
-                # If the first station fails, we might want to know.
-                # If subsequent ones fail, maybe we just skip?
-                if base_df is None:
-                    raise e
-                continue
-        
-        if base_df is None:
-            return pd.DataFrame()
-            
-        # Reset index if we changed it
-        if base_df.index.name == "Date":
-            base_df = base_df.reset_index()
-            
-        # Ensure station column reflects the threaded ID string
-        base_df["station"] = station_str
-            
-        return base_df
-
-    return func(**args)
+    return xmacis2py.get_data(**args)
 
 
-def _run_analysis_tool(tool_name, args):
+def _run_analysis_tool(tool_name, tool_info, args):
     """Execute an analysis tool by first fetching data, then analyzing.
 
     Args:
         tool_name: Name of the analysis tool.
+        tool_info: Tool definition from registry.
         args: Dict of tool arguments.
 
     Returns:
         The analysis result.
     """
-    # Map the 'value' arg for threshold functions (they use the same name in xmacis2py)
-    func = _get_function(tool_name)
+    # Get the correct xmacis2py function
+    func_name = tool_info.get("xmacis2py_func", tool_name)
+    func = getattr(analysis_mod, func_name)
 
     # First fetch the data
     data_args = {k: v for k, v in args.items() if k in ("station", "start_date", "end_date",
                                                           "from_when", "time_delta",
                                                           "to_csv", "return_pandas_df")}
-    df = _run_get_data(data_args)
+    df = xmacis2py.get_data(**data_args)
 
     # Map short variable codes to DataFrame column names
     col_name = VARIABLE_COLUMN_MAP.get(args["variable"], args["variable"])
 
-    if tool_name in _THRESHOLD_TOOLS:
+    category = tool_info["category"]
+
+    if category == "threshold":
         # threshold functions take (df, parameter, value)
-        result = func(df, col_name, args["value"])
+        return func(df, col_name, args["value"])
     elif tool_name == "period_percentile":
         # period_percentile takes (df, parameter, percentile, ...)
-        result = func(df, col_name, percentile=args["percentile"])
-    elif tool_name == "detrend_data":
-        result = func(df, col_name)
-    elif tool_name in ("running_sum", "running_mean"):
-        result = func(df, col_name)
+        return func(df, col_name, percentile=args["percentile"])
     elif tool_name == "period_rankings":
         result = func(df, col_name).copy()
         if args.get("sort_order") == "ascending":
@@ -285,11 +94,10 @@ def _run_analysis_tool(tool_name, args):
             result.insert(0, "Ascending Rank (1=Lowest)", range(1, len(result) + 1))
         else:
             result.insert(0, "Descending Rank (1=Highest)", range(1, len(result) + 1))
+        return result
     else:
-        # Most analysis functions take (df, parameter, ...)
-        result = func(df, col_name)
-
-    return result
+        # Generic analysis: func(df, col_name)
+        return func(df, col_name)
 
 
 def execute_tool_call(tool_name, tool_args):
@@ -307,9 +115,11 @@ def execute_tool_call(tool_name, tool_args):
     if validation_error:
         return format_error(validation_error)
 
-    # Execute the function
+    tool_info = TOOL_MAP[tool_name]
+    category = tool_info["category"]
+
     try:
-        if tool_name in _COMPOSITE_TOOLS:
+        if category in ("composite", "composite_station"):
             from composite_tools import (
                 monthly_totals_by_year,
                 seasonal_summary,
@@ -324,21 +134,12 @@ def execute_tool_call(tool_name, tool_args):
             }
             result = func_map[tool_name](**tool_args)
             return format_result(result, tool_name)
-        elif tool_name == "get_data":
+        elif category == "data":
             result = _run_get_data(tool_args)
             return format_result(result, tool_name)
         else:
-            result = _run_analysis_tool(tool_name, tool_args)
+            result = _run_analysis_tool(tool_name, tool_info, tool_args)
             return format_result(result, tool_name)
-
-    except ImportError as e:
-        return format_error(str(e))
-
-    except TypeError as e:
-        error_msg = str(e)
-        if "missing" in error_msg.lower() or "required" in error_msg.lower():
-            return format_error(f"Argument error: {error_msg}")
-        return format_error(f"TypeError: {error_msg}")
 
     except Exception as e:
         error_type = type(e).__name__
