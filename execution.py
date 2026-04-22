@@ -194,12 +194,14 @@ def execute_tool_call(tool_name, tool_args):
                 seasonal_summary,
                 frequency_of_occurrence,
                 find_best_station,
+                monthly_threshold_counts,
             )
             func_map = {
                 "monthly_totals_by_year": monthly_totals_by_year,
                 "seasonal_summary": seasonal_summary,
                 "frequency_of_occurrence": frequency_of_occurrence,
                 "find_best_station": find_best_station,
+                "monthly_threshold_counts": monthly_threshold_counts,
             }
             result = func_map[tool_name](**tool_args)
             return format_result(result, tool_name)

@@ -146,12 +146,11 @@ def format_station_result(result):
     parts.append(f"All IDs: {', '.join(result.get('all_ids', []))}")
 
     nearby = result.get("nearby_stations", [])
-    if len(nearby) > 1:
+    if nearby:
         parts.append("")
         parts.append("Nearby alternatives:")
-        for s in nearby[1:]:
-            active = "active" if s["active"] else "inactive"
-            parts.append(f"  {s['id']} — {s['name']} ({s['record']}, {active})")
+        for s in nearby:
+            parts.append(f"  {s}")
 
     return "\n".join(parts)
 

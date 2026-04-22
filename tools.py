@@ -388,15 +388,50 @@ TOOL_REGISTRY = [
         },
     },
     {
+        "name": "monthly_threshold_counts",
+        "description": "Count the number of days meeting a threshold (e.g. days <= 32) for a specific month or season across all available years. Returns a year-by-year breakdown of counts and extreme values.",
+        "category": "composite",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "station": {"type": "string", "description": STATION_DESC},
+                "variable": {"type": "string", "description": VARIABLE_DESC},
+                "threshold": {"type": "number", "description": "Value to compare against"},
+                "comparison": {
+                    "type": "string",
+                    "enum": ["above", "at_or_above", "below", "at_or_below"],
+                    "description": "Comparison type",
+                },
+                "month": {
+                    "type": "string",
+                    "description": "Month number or name (e.g. 'january', '1'). Provide month OR season.",
+                },
+                "season": {
+                    "type": "string",
+                    "description": "Season name (e.g. 'winter'). Provide month OR season.",
+                },
+                "start_year": {
+                    "type": "integer",
+                    "description": "First year to include (optional)",
+                },
+                "end_year": {
+                    "type": "integer",
+                    "description": "Last year to include (optional)",
+                },
+            },
+            "required": ["station", "variable", "threshold", "comparison"],
+        },
+    },
+    {
         "name": "find_best_station",
-        "description": "Find the best ACIS weather station near a city or zip code. Returns the active station with the longest historical data record. Use this when the user provides a location (city name, zip code) instead of a specific station ID.",
+        "description": "Find the best ACIS weather station near a location. Returns the active station with the longest historical data record. IMPORTANT: For city names, you MUST provide a 5-digit zip code or a 4-letter airport code (e.g. '33126' or 'KMIA' for Miami) to ensure accuracy. DO NOT pass raw city names like 'Miami, FL'.",
         "category": "composite_station",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "location": {
                     "type": "string",
-                    "description": "City name, zip code, or place description (e.g. 'Fort Myers', '33901', 'Denver, CO')",
+                    "description": "5-digit zip code, 4-letter airport code, or ACIS station ID (e.g. '33126', 'KMIA', 'KNYC').",
                 },
             },
             "required": ["location"],
