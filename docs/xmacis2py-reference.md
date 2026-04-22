@@ -1,6 +1,6 @@
 # xmacis2py Reference
 
-Quick reference for xmacis2py tools used by acis2llm.
+Quick reference for the [xmACIS2Py](https://github.com/edrewitz/xmACIS2Py) library (by Eric J. Drewitz) used by acis2llm to interface with the [RCC ACIS](https://www.rcc-acis.org/overview) database.
 
 ## Data Retrieval
 

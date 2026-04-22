@@ -188,6 +188,15 @@ CLI Mode:
 User ──▶ cli.py ──▶ LLM (local) ──▶ execution.py ──▶ xmacis2py ──▶ NOAA RCC ACIS
 ```
 
+## Data Sources & Credits
+
+This project is built upon the following data sources and libraries:
+
+- **Data Source**: All weather and climate data is provided by the **Regional Climate Centers (RCCs)** through the **Applied Climate Information System (ACIS)**. For more information about ACIS, visit [rcc-acis.org](https://www.rcc-acis.org/overview).
+- **Python Library**: This project uses [xmACIS2Py](https://github.com/edrewitz/xmACIS2Py), a Python library developed by **Eric J. Drewitz** (@edrewitz) for analyzing and retrieving ACIS climate data.
+
+Special thanks to the Regional Climate Centers and Eric J. Drewitz for maintaining these essential tools for the climate community.
+
 ## License
 
 MIT
