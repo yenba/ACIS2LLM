@@ -1,0 +1,42 @@
+# Dependencies
+.venv/
+venv/
+env/
+
+# uv
+uv.lock
+
+# Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution
+dist/
+build/
+*.egg-info/
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config & history (local files)
+.acis2llm/
+
+# Claude Code local settings
+.claude/
+
+# OpenCode
+.opencode/
+
+# Dev planning docs (local only)
+.internal/
+docs/superpowers/
