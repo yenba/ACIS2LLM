@@ -45,6 +45,9 @@ def _validate_args(tool_name, args):
 
 def _run_get_data(args):
     """Execute get_data and return the result.
+    
+    Handles multiple stations via comma (aggregation) or plus (backfilling).
+    Includes try-except protection against library/API errors.
 
     Args:
         args: Dict of get_data arguments.
@@ -52,7 +55,67 @@ def _run_get_data(args):
     Returns:
         pandas DataFrame or CSV string.
     """
-    return xmacis2py.get_data(**args)
+    station_str = args.get("station", "")
+    import pandas as pd
+    
+    try:
+        # Handle multiple stations via comma
+        if isinstance(station_str, str) and "," in station_str:
+            stations = [s.strip() for s in station_str.split(",")]
+            dfs = []
+            for s in stations:
+                if not s: continue
+                s_args = args.copy()
+                s_args["station"] = s
+                try:
+                    df = xmacis2py.get_data(**s_args)
+                    if isinstance(df, pd.DataFrame):
+                        if "station" not in df.columns:
+                            df.insert(0, "station", s)
+                        dfs.append(df)
+                except Exception:
+                    continue
+            return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+
+        # Handle backfilling via plus
+        if isinstance(station_str, str) and "+" in station_str:
+            stations = [s.strip() for s in station_str.split("+")]
+            base_df = None
+            for s in stations:
+                if not s: continue
+                s_args = args.copy()
+                s_args["station"] = s
+                try:
+                    df = xmacis2py.get_data(**s_args)
+                    if not isinstance(df, pd.DataFrame) or df.empty:
+                        continue
+                    
+                    # Use Date as index for combining
+                    if "Date" in df.columns:
+                        df = df.set_index("Date")
+                    elif "valid_date" in df.columns:
+                        df = df.set_index("valid_date")
+
+                    if base_df is None:
+                        base_df = df
+                    else:
+                        base_df = base_df.combine_first(df)
+                except Exception:
+                    continue
+            
+            if base_df is None: return pd.DataFrame()
+            
+            # Restore index and set station
+            base_df = base_df.reset_index()
+            base_df["station"] = station_str
+            return base_df
+
+        return xmacis2py.get_data(**args)
+    except Exception as e:
+        # Fallback for unexpected top-level errors
+        import logging
+        logging.error(f"Error in _run_get_data: {e}")
+        return pd.DataFrame()
 
 
 def _run_analysis_tool(tool_name, tool_info, args):
