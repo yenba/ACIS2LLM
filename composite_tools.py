@@ -20,8 +20,8 @@ except ImportError:
     XMACIS2PY_AVAILABLE = False
 
 from execution import VARIABLE_COLUMN_MAP
-from config import CENSUS_GEOCODER_URL
 
+CENSUS_GEOCODER_URL = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
 ACIS_STNMETA_URL = "https://data.rcc-acis.org/StnMeta"
 
 

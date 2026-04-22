@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "acis2llm"
 version = "0.1.0"
-description = "Weather and climate data tools powered by NOAA RCC ACIS — CLI and MCP server"
+description = "Weather and climate data tools powered by NOAA RCC ACIS — MCP server"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -21,8 +21,6 @@ classifiers = [
 ]
 
 dependencies = [
-    "openai>=1.0.0",
-    "pyyaml>=6.0",
     "requests>=2.31.0",
     "xmacis2py>=2.0",
     "pandas>=2.0",
@@ -41,19 +39,13 @@ dev = ["pytest>=7.0", "pytest-mock"]
 testpaths = ["tests"]
 
 [project.scripts]
-acis2llm = "main:main"
 acis2llm-mcp = "mcp_server:main"
 
 [tool.setuptools]
 py-modules = [
-    "main",
-    "cli",
-    "config",
-    "acis2llm_setup",
     "composite_tools",
     "execution",
     "formatter",
-    "system_prompt",
     "tools",
     "mcp_server",
 ]
