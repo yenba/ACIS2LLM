@@ -42,5 +42,5 @@ XMACIS2 DATA/
 
 # Dev planning docs (local only)
 PLAN.md
-docs/superpowers/plans/
+docs/superpowers/
 docs/test-and-iterate.md
