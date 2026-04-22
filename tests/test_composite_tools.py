@@ -251,3 +251,57 @@ class TestIsZipCode:
 
     def test_city_name(self):
         assert is_zip_code("Fort Myers") is False
+
+from unittest.mock import patch, MagicMock
+from composite_tools import geocode_census
+
+class TestGeocodeCensus:
+    @patch('requests.get')
+    def test_geocode_census_success(self, mock_get):
+        # Mock successful response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "result": {
+                "addressMatches": [
+                    {
+                        "matchedAddress": "4600 Silver Hill Rd, Washington, DC 20233",
+                        "coordinates": {
+                            "x": -76.92744,
+                            "y": 38.84599
+                        }
+                    }
+                ]
+            }
+        }
+        mock_get.return_value = mock_response
+
+        result = geocode_census("4600 Silver Hill Rd, Washington, DC 20233")
+        
+        assert result is not None
+        assert result["lat"] == 38.84599
+        assert result["lon"] == -76.92744
+        assert "4600 Silver Hill Rd" in result["display_name"]
+
+    @patch('requests.get')
+    def test_geocode_census_no_results(self, mock_get):
+        # Mock response with no matches
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "result": {
+                "addressMatches": []
+            }
+        }
+        mock_get.return_value = mock_response
+
+        result = geocode_census("Nonexistent Address")
+        assert result is None
+
+    @patch('requests.get')
+    def test_geocode_census_network_error(self, mock_get):
+        # Mock network error
+        mock_get.side_effect = Exception("Network error")
+        
+        result = geocode_census("Some Address")
+        assert result is None

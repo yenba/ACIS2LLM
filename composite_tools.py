@@ -20,9 +20,35 @@ except ImportError:
     XMACIS2PY_AVAILABLE = False
 
 from execution import VARIABLE_COLUMN_MAP
+from config import CENSUS_GEOCODER_URL
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 ACIS_STNMETA_URL = "https://data.rcc-acis.org/StnMeta"
+
+
+def geocode_census(location: str):
+    """Geocodes a location string using the US Census Geocoder."""
+    params = {
+        "address": location,
+        "benchmark": "Public_AR_Current",
+        "format": "json"
+    }
+    try:
+        resp = requests.get(CENSUS_GEOCODER_URL, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        matches = data.get("result", {}).get("addressMatches", [])
+        if not matches:
+            return None
+
+        first = matches[0]
+        return {
+            "lat": first["coordinates"]["y"],
+            "lon": first["coordinates"]["x"],
+            "display_name": first["matchedAddress"]
+        }
+    except Exception:
+        return None
 
 
 _MONTH_NAMES = {name.lower(): num for num, name in enumerate(calendar.month_name) if num}
