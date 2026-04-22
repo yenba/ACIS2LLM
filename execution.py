@@ -238,6 +238,9 @@ def _run_get_data(args):
         if base_df.index.name == "Date":
             base_df = base_df.reset_index()
             
+        # Ensure station column reflects the threaded ID string
+        base_df["station"] = station_str
+            
         return base_df
 
     return func(**args)

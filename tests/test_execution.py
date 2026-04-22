@@ -22,3 +22,5 @@ def test_threaded_station_data(mocker):
     assert len(df) == 2
     assert df["Maximum Temperature"].iloc[0] == 100
     assert df["Maximum Temperature"].iloc[1] == 95
+    # Should reflect threaded ID
+    assert all(df["station"] == "KPHX+026486")

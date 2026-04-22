@@ -25,10 +25,97 @@ from config import CENSUS_GEOCODER_URL
 ACIS_STNMETA_URL = "https://data.rcc-acis.org/StnMeta"
 
 
+_STATE_TO_FIPS = {
+    "AL": "01", "AK": "02", "AZ": "04", "AR": "05", "CA": "06", "CO": "08", "CT": "09", "DE": "10",
+    "FL": "12", "GA": "13", "HI": "15", "ID": "16", "IL": "17", "IN": "18", "IA": "19", "KS": "20",
+    "KY": "21", "LA": "22", "ME": "23", "MD": "24", "MA": "25", "MI": "26", "MN": "27", "MS": "28",
+    "MO": "29", "MT": "30", "NE": "31", "NV": "32", "NH": "33", "NJ": "34", "NM": "35", "NY": "36",
+    "NC": "37", "ND": "38", "OH": "39", "OK": "40", "OR": "41", "PA": "42", "RI": "44", "SC": "45",
+    "SD": "46", "TN": "47", "TX": "48", "UT": "49", "VT": "50", "VA": "51", "WA": "53", "WV": "54",
+    "WI": "55", "WY": "56", "AS": "60", "GU": "66", "MP": "69", "PR": "72", "VI": "78", "DC": "11"
+}
+
+
 def geocode_census(location: str):
-    """Geocodes a location string using the US Census Geocoder."""
+    """Geocodes a location string using US Census Geocoder or Zippopotam.us for zips."""
+    location = location.strip()
+    
+    # Check if it's a zip code
+    if is_zip_code(location):
+        try:
+            # Zippopotam.us is free, no key, and great for bare zip codes
+            zip_only = location.split("-")[0]
+            resp = requests.get(f"http://api.zippopotam.us/us/{zip_only}", timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("places"):
+                    place = data["places"][0]
+                    return {
+                        "lat": float(place["latitude"]),
+                        "lon": float(place["longitude"]),
+                        "display_name": f"{place['place name']}, {place['state abbreviation']} {location}"
+                    }
+        except Exception:
+            pass
+
+    # Fallback to US Census Geocoder for addresses/cities
+    # Note: Census Geocoder's onelineaddress endpoint is picky and often requires 
+    # a street address. 
+
+    # 1. Try TIGERweb for city center centroids (robust for city/state queries)
+    if "," in location and not any(char.isdigit() for char in location):
+        parts = [p.strip() for p in location.split(",")]
+        if len(parts) >= 2:
+            city_name = parts[0]
+            state_in = parts[1].upper()
+            state_fips = _STATE_TO_FIPS.get(state_in)
+            
+            # TIGERweb Layers: 4 (Incorporated Places), 6 (Census Designated Places), 26 (Consolidated Cities)
+            for layer_id in [4, 6, 26]:
+                tiger_url = f"https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Places_CouSub_ConCity_SubMCD/MapServer/{layer_id}/query"
+                where = f"NAME LIKE '{city_name}%'"
+                if state_fips:
+                    where += f" AND STATE = '{state_fips}'"
+
+                params = {
+                    "where": where,
+                    "outFields": "NAME,STATE,CENTLAT,CENTLON",
+                    "returnGeometry": "false",
+                    "f": "json",
+                }
+                try:
+                    resp = requests.get(tiger_url, params=params, timeout=10)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        features = data.get("features", [])
+                        if features:
+                            # Prefer a match that contains the city name exactly in the full name
+                            best_match = features[0]
+                            for feat in features:
+                                name = feat.get('attributes', {}).get('NAME', '')
+                                # Match "Lexington" in "Lexington-Fayette urban county"
+                                if city_name.lower() in name.lower():
+                                    best_match = feat
+                                    if name.lower() == city_name.lower() or name.lower().startswith(city_name.lower() + " "):
+                                        break
+                            
+                            attrs = best_match.get("attributes", {})
+                            if "CENTLAT" in attrs and "CENTLON" in attrs:
+                                return {
+                                    "lat": float(attrs["CENTLAT"]),
+                                    "lon": float(attrs["CENTLON"]),
+                                    "display_name": f"{attrs['NAME']} city center"
+                                }
+                except Exception:
+                    continue
+
+    # 2. Generic Census Geocoder (heuristic for addresses)
+    search_location = location
+    if not any(char.isdigit() for char in location):
+        search_location = f"1 Main St, {location}"
+
     params = {
-        "address": location,
+        "address": search_location,
         "benchmark": "Public_AR_Current",
         "format": "json"
     }
@@ -37,6 +124,14 @@ def geocode_census(location: str):
         resp.raise_for_status()
         data = resp.json()
         matches = data.get("result", {}).get("addressMatches", [])
+        
+        # If no matches, try one more time without the hack just in case
+        if not matches and search_location != location:
+            params["address"] = location
+            resp = requests.get(CENSUS_GEOCODER_URL, params=params, timeout=10)
+            data = resp.json()
+            matches = data.get("result", {}).get("addressMatches", [])
+
         if not matches:
             return None
 
@@ -545,6 +640,7 @@ def find_best_station(location):
     acis_payload = {
         "sids": location,
         "meta": "name,state,ll,valid_daterange,sids",
+        "elems": "maxt",
     }
     try:
         resp = requests.post(ACIS_STNMETA_URL, json=acis_payload, timeout=10)
@@ -608,6 +704,7 @@ def find_best_station(location):
     acis_payload = {
         "bbox": bbox,
         "meta": "name,state,ll,valid_daterange,sids",
+        "elems": "maxt",
     }
     try:
         resp = requests.post(ACIS_STNMETA_URL, json=acis_payload, timeout=15)
@@ -687,6 +784,21 @@ def find_best_station(location):
 
     best = scored[0]
 
+    # Smart Threading Logic
+    # Find the oldest inactive station nearby that pre-dates the best active station
+    threaded_id = best["id"]
+    combined_start = best["earliest_start"]
+    
+    for s in scored:
+        # Check all stations (including active ones, though we usually thread with inactive)
+        # Radius: ~10 miles (0.15 deg)
+        if s["dist"] < 0.15 and s["earliest_start"] < combined_start:
+            # Note: We prefer inactive stations for threading if possible, 
+            # but if an active one is even older, we'd use its start anyway.
+            # Usually, the 'best' active is already the oldest active.
+            threaded_id = f"{best['id']}+{s['id']}"
+            combined_start = s["earliest_start"]
+
     # Build nearby stations list
     nearby = []
     for s in scored[:5]:
@@ -698,12 +810,12 @@ def find_best_station(location):
         })
 
     return {
-        "station_id": best["id"],
+        "station_id": threaded_id,
         "name": f"{best['name']}, {best['state']}",
         "coordinates": best["coordinates"],
-        "data_start": best["earliest_start"],
+        "data_start": combined_start,
         "data_end": best["latest_end"],
-        "record_length_years": best["latest_end"] - best["earliest_start"],
+        "record_length_years": best["latest_end"] - combined_start,
         "all_ids": best["all_ids"],
         "geocoded_location": display_name,
         "nearby_stations": nearby,
