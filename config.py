@@ -7,6 +7,7 @@ import yaml
 
 CONFIG_DIR = Path.home() / ".acis2llm"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
+CENSUS_GEOCODER_URL = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
 
 ENV_OVERRIDES = {
     "endpoint_url": "ACIS2LLM_ENDPOINT",
