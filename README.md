@@ -1,4 +1,4 @@
-# acis2LLM
+# ACIS2LLM
 
 Weather and climate data tools powered by NOAA RCC ACIS. Use as a standalone CLI with a local LLM, or as an MCP server in Claude Code, Cursor, and other AI tools.
 
