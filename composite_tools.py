@@ -5,6 +5,7 @@ returning structured results that answer common climatological queries in one ca
 """
 
 import calendar
+import re
 import time
 from datetime import datetime
 
@@ -492,6 +493,11 @@ def monthly_totals_by_year(station, variable, month, start_year=None,
                                        aggregation=aggregation,
                                        start_year=start_year,
                                        end_year=end_year)
+
+
+def is_zip_code(location: str) -> bool:
+    """Detect 5-digit zip patterns (and optional +4 extension)."""
+    return bool(re.match(r"^\d{5}(-\d{4})?$", location.strip()))
 
 
 def find_best_station(location):

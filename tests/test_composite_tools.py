@@ -3,7 +3,10 @@
 import pandas as pd
 import pytest
 
-from composite_tools import _parse_month, _get_season_months, _aggregate_monthly_by_year, _aggregate_seasonal_by_year, _calculate_frequency
+from composite_tools import (
+    _parse_month, _get_season_months, _aggregate_monthly_by_year,
+    _aggregate_seasonal_by_year, _calculate_frequency, is_zip_code
+)
 
 # Load the real NYC CSV as test fixture data
 NYC_CSV_PATH = "XMACIS2 DATA/KNYC.csv"
@@ -222,3 +225,29 @@ class TestCalculateFrequency:
             nyc_df, "Snowfall", month=4, threshold=0, comparison="above",
         )
         assert "%" in result["summary"]
+
+
+class TestIsZipCode:
+    def test_valid_5_digit(self):
+        assert is_zip_code("12345") is True
+
+    def test_valid_zip_plus_4(self):
+        assert is_zip_code("12345-6789") is True
+
+    def test_valid_with_spaces(self):
+        assert is_zip_code("  12345  ") is True
+
+    def test_invalid_short(self):
+        assert is_zip_code("1234") is False
+
+    def test_invalid_long(self):
+        assert is_zip_code("123456") is False
+
+    def test_invalid_plus_4_short(self):
+        assert is_zip_code("12345-678") is False
+
+    def test_invalid_characters(self):
+        assert is_zip_code("1234a") is False
+
+    def test_city_name(self):
+        assert is_zip_code("Fort Myers") is False
