@@ -133,34 +133,40 @@ def _run_analysis_tool(tool_name, tool_info, args):
     func_name = tool_info.get("xmacis2py_func", tool_name)
     func = getattr(analysis_mod, func_name)
 
-    # First fetch the data
+    # First fetch the data using our wrapper
     data_args = {k: v for k, v in args.items() if k in ("station", "start_date", "end_date",
                                                           "from_when", "time_delta",
                                                           "to_csv", "return_pandas_df")}
-    df = xmacis2py.get_data(**data_args)
+    df = _run_get_data(data_args)
+    
+    if df.empty:
+        raise ValueError(f"No data returned for station {args.get('station')} in the specified period.")
 
     # Map short variable codes to DataFrame column names
     col_name = VARIABLE_COLUMN_MAP.get(args["variable"], args["variable"])
 
     category = tool_info["category"]
 
-    if category == "threshold":
-        # threshold functions take (df, parameter, value)
-        return func(df, col_name, args["value"])
-    elif tool_name == "period_percentile":
-        # period_percentile takes (df, parameter, percentile, ...)
-        return func(df, col_name, percentile=args["percentile"])
-    elif tool_name == "period_rankings":
-        result = func(df, col_name).copy()
-        if args.get("sort_order") == "ascending":
-            result = result.sort_values(by=col_name, ascending=True).reset_index(drop=True)
-            result.insert(0, "Ascending Rank (1=Lowest)", range(1, len(result) + 1))
+    try:
+        if category == "threshold":
+            # threshold functions take (df, parameter, value)
+            return func(df, col_name, args["value"])
+        elif tool_name == "period_percentile":
+            # period_percentile takes (df, parameter, percentile, ...)
+            return func(df, col_name, percentile=args["percentile"])
+        elif tool_name == "period_rankings":
+            result = func(df, col_name).copy()
+            if args.get("sort_order") == "ascending":
+                result = result.sort_values(by=col_name, ascending=True).reset_index(drop=True)
+                result.insert(0, "Ascending Rank (1=Lowest)", range(1, len(result) + 1))
+            else:
+                result.insert(0, "Descending Rank (1=Highest)", range(1, len(result) + 1))
+            return result
         else:
-            result.insert(0, "Descending Rank (1=Highest)", range(1, len(result) + 1))
-        return result
-    else:
-        # Generic analysis: func(df, col_name)
-        return func(df, col_name)
+            # Generic analysis: func(df, col_name)
+            return func(df, col_name)
+    except Exception as e:
+        raise RuntimeError(f"Analysis error in {tool_name}: {str(e)}")
 
 
 def execute_tool_call(tool_name, tool_args):
