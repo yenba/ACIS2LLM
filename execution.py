@@ -153,6 +153,8 @@ def _validate_args(tool_name, args):
 def _run_get_data(args):
     """Execute get_data and return the DataFrame.
 
+    Handles multiple stations by querying them sequentially if needed.
+
     Args:
         args: Dict of get_data arguments.
 
@@ -163,6 +165,81 @@ def _run_get_data(args):
         Exception: If get_data fails.
     """
     func = _get_function("get_data")
+    
+    # Extract station string
+    station_str = args.get("station", "")
+    
+    # If multiple stations are requested via comma-separated string
+    if isinstance(station_str, str) and "," in station_str:
+        import pandas as pd
+        stations = [s.strip() for s in station_str.split(",")]
+        dfs = []
+        for s in stations:
+            if not s:
+                continue
+            s_args = args.copy()
+            s_args["station"] = s
+            try:
+                df = func(**s_args)
+                # Ensure it's a DataFrame
+                if isinstance(df, pd.DataFrame):
+                    # Add station column to distinguish results
+                    if "station" not in df.columns:
+                        df.insert(0, "station", s)
+                    dfs.append(df)
+            except Exception as e:
+                # Log error but continue with other stations if some succeed?
+                # For now, let's re-raise if it's a fatal error, 
+                # but if we have multiple stations, maybe we should collect what we can.
+                raise e
+        
+        if not dfs:
+            return pd.DataFrame()
+            
+        return pd.concat(dfs, ignore_index=True)
+
+    # If multiple stations are requested via '+' for smart merging (backfilling)
+    if isinstance(station_str, str) and "+" in station_str:
+        import pandas as pd
+        stations = [s.strip() for s in station_str.split("+")]
+        base_df = None
+        
+        for s in stations:
+            if not s:
+                continue
+            s_args = args.copy()
+            s_args["station"] = s
+            try:
+                df = func(**s_args)
+                if not isinstance(df, pd.DataFrame) or df.empty:
+                    continue
+                
+                # We need a consistent index for combine_first to work correctly.
+                # Usually 'Date' is the best candidate if it exists.
+                has_date = "Date" in df.columns
+                if has_date:
+                    df = df.set_index("Date")
+                
+                if base_df is None:
+                    base_df = df
+                else:
+                    base_df = base_df.combine_first(df)
+            except Exception as e:
+                # If the first station fails, we might want to know.
+                # If subsequent ones fail, maybe we just skip?
+                if base_df is None:
+                    raise e
+                continue
+        
+        if base_df is None:
+            return pd.DataFrame()
+            
+        # Reset index if we changed it
+        if base_df.index.name == "Date":
+            base_df = base_df.reset_index()
+            
+        return base_df
+
     return func(**args)
 
 
@@ -245,8 +322,7 @@ def execute_tool_call(tool_name, tool_args):
             result = func_map[tool_name](**tool_args)
             return format_result(result, tool_name)
         elif tool_name == "get_data":
-            func = _get_function(tool_name)
-            result = func(**tool_args)
+            result = _run_get_data(tool_args)
             return format_result(result, tool_name)
         else:
             result = _run_analysis_tool(tool_name, tool_args)
