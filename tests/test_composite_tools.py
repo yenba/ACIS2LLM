@@ -11,7 +11,7 @@ from acis2llm.composite_tools import (
 from datetime import datetime
 
 # Load the real NYC CSV as test fixture data
-NYC_CSV_PATH = "XMACIS2 DATA/KNYC.csv"
+NYC_CSV_PATH = "tests/data/KNYC.csv"
 
 
 @pytest.fixture
