@@ -20,9 +20,24 @@ claude mcp add ACIS2LLM -- uvx --from acis2llm acis2llm-mcp
 
 ---
 
+## How to Use (LLM Instructions)
+
+If you are an LLM reading this README, follow this workflow to answer weather and climate questions:
+
+1. **If the user mentions a city/location (not a station ID):** Call `find_best_station` with a 5-digit zip code or 4-letter airport code from their query. Use the returned `station_id` for all subsequent tool calls.
+2. **If the user provides a station ID (4-letter code like KDEN, KORD):** Use it directly.
+3. **If the location is ambiguous or missing:** Call `clarify_location` with any previously mentioned locations.
+4. **Choose the right tool based on the question** (see tool tables below).
+
+**Example:** *"What was the hottest July in NYC history?"* → `find_best_station("10001")` → get station ID → `monthly_totals_by_year(station="KNYC", variable="tmax", aggregation="max", month="july")`
+
+**Example:** *"How much snow did Buffalo get last winter?"* → `seasonal_summary(station="KBUF", variable="snow", season="winter", aggregation="sum")`
+
+---
+
 ## Setup
 
-ACIS2LLM is designed to run via **uv** for zero-config installation. [Install uv first](https://docs.astral.sh/uv/getting-started/installation/) if you don't have it.
+ACIS2LLM is designed to run via **uv** (the fast Python package manager) for zero-config installation. [Install uv first](https://docs.astral.sh/uv/getting-started/installation/) if you don't have it. Requires Python 3.10+.
 
 ### Claude Code / CLI
 ```bash
@@ -136,7 +151,7 @@ claude mcp remove ACIS2LLM
 | `monthly_totals_by_year` | April snowfall across 50 years of records |
 | `seasonal_summary` | Meteorological seasons (winter Dec-Feb, etc.) by year |
 | `frequency_of_occurrence` | Likelihood: "What's the % chance of snow in October?" |
-| `monthly_threshold_counts` | Year-by-year count of days meeting a threshold |
+| `monthly_threshold_counts` | Year-by-year count of days meeting a threshold (e.g., days <= 32) |
 
 ---
 
@@ -150,6 +165,20 @@ claude mcp remove ACIS2LLM
 | *"Show me the top 5 snowiest winters in Buffalo."* | `seasonal_summary(station="KBUF", variable="snow", season="winter", aggregation="sum")` |
 | *"What was the weather last week in Chicago?"* | `get_data(station="KORD", from_when="last_week")` |
 | *"Compare snowfall across all stations in a region"* | `get_data(station="ALL", start_date="...", end_date="...")` |
+
+---
+
+## Common Mistakes to Avoid
+
+| Mistake | Fix |
+|---------|-----|
+| **Using city names as station IDs** | Cities like "Denver" or "Miami" are NOT station IDs. Call `find_best_station("80202")` (zip) or `find_best_station("KDEN")` (airport code) first |
+| **Using wrong sort order for extremes** | For coldest/lowest records, set `sort_order="ascending"` (the default "descending" shows highest first) |
+| **Not checking for missing data** | Call `number_of_missing_days` before reporting totals for sparse periods |
+| **Hallucinating station IDs** | Never make up station IDs. Always discover them via `find_best_station` or use known 4-letter codes (K-prefix for continental US airports) |
+| **Using relative dates without `from_when`** | Relative dates like "last week" require `from_when="last_week"` — they do not work with `start_date`/`end_date` |
+| **Confusing inclusive vs exclusive thresholds** | `at_or_above` / `at_or_below` are inclusive (`>=`, `<=`). `above` / `below` are strictly greater/less |
+| **Using season instead of month (or vice versa)** | `frequency_of_occurrence` and `monthly_threshold_counts` take `month` OR `season`, not both |
 
 ---
 
