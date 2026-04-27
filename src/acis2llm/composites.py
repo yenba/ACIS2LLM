@@ -198,17 +198,28 @@ def _calculate_frequency(df, column, threshold, comparison, month=None, season=N
 
     filtered[column] = pd.to_numeric(filtered[column], errors="coerce")
 
+    comparison_aliases = {
+        ">": "above", "above": "above",
+        ">=": "at_or_above", "at_or_above": "at_or_above",
+        "<": "below", "below": "below",
+        "<=": "at_or_below", "at_or_below": "at_or_below",
+    }
+    canonical = comparison_aliases.get(comparison)
+    if canonical is None:
+        raise ValueError(
+            f"Unknown comparison: {comparison!r}. "
+            "Use one of: 'above' / '>', 'at_or_above' / '>=', "
+            "'below' / '<', 'at_or_below' / '<='."
+        )
     comparisons = {
         "above": lambda s: s > threshold,
         "at_or_above": lambda s: s >= threshold,
         "below": lambda s: s < threshold,
         "at_or_below": lambda s: s <= threshold,
     }
-    if comparison not in comparisons:
-        raise ValueError(f"Unknown comparison: {comparison}")
-    filtered["_match"] = comparisons[comparison](filtered[column])
+    filtered["_match"] = comparisons[canonical](filtered[column])
 
-    extreme_func = "min" if comparison in ("below", "at_or_below") else "max"
+    extreme_func = "min" if canonical in ("below", "at_or_below") else "max"
     grouped = filtered.groupby("_year").agg(
         days_matched=("_match", "sum"),
         total_days=("_match", "count"),
@@ -265,9 +276,15 @@ def frequency_of_occurrence(station, variable, threshold, comparison,
 
     Returns a dict with `count`, `total_years`, `percentage`, `table`, `summary`.
     Provide exactly one of ``month`` or ``season``.
+
+    `comparison` accepts ``"above"`` / ``">"``, ``"at_or_above"`` / ``">="``,
+    ``"below"`` / ``"<"``, or ``"at_or_below"`` / ``"<="``.
     """
     if month is None and season is None:
-        raise ValueError("Either 'month' or 'season' must be provided.")
+        raise ValueError(
+            "Pass either month=<1-12 or month name> or "
+            "season=<'winter'|'spring'|'summer'|'fall'>."
+        )
     if month is not None and season is not None:
         raise ValueError("Provide 'month' or 'season', not both.")
 
@@ -350,10 +367,15 @@ def monthly_totals_by_year(station, variable, month, start_year=None, end_year=N
 
 def monthly_threshold_counts(station, variable, threshold, comparison,
                               month=None, season=None, start_year=None, end_year=None):
-    """Per-year count of days meeting a threshold in a given month or season.
+    """Per-year count of days meeting a threshold in a single month or season.
 
-    Convenience alias for `frequency_of_occurrence` that emphasizes the per-year
-    `days_met` counts in the returned table.
+    Despite the name, this does NOT iterate every month — it's a thin alias for
+    `frequency_of_occurrence` that surfaces the per-year ``days_met`` counts.
+    Provide exactly one of ``month`` or ``season``. To compare counts across
+    every month, call this once per month and assemble the results yourself.
+
+    `comparison` accepts ``"above"`` / ``">"``, ``"at_or_above"`` / ``">="``,
+    ``"below"`` / ``"<"``, or ``"at_or_below"`` / ``"<="``.
     """
     return frequency_of_occurrence(station, variable, threshold, comparison,
                                     month=month, season=season,
