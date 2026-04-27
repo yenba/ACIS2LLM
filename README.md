@@ -1,205 +1,144 @@
-# ACIS2LLM
+# acis2llm
 
-> **The professional weather & climate data layer for LLMs.**
+> Agent-friendly helpers for the [xmACIS2Py](https://github.com/edrewitz/xmACIS2Py) climate library — **plus** the [`acis-weather`](skills/acis-weather/SKILL.md) skill that teaches an LLM how to use them.
 
-ACIS2LLM connects your AI agents to the **Applied Climate Information System (ACIS)**, providing high-fidelity historical data and statistical analysis from NOAA Regional Climate Centers—no API keys, no rate limits, just pure climate science.
+`acis2llm` adds three things on top of `xmacis2py`:
 
----
+1. **Station discovery** — resolve `"Denver, CO"` / `"10001"` / `"KNYC"` → ACIS station ID
+2. **Multi-station fetch** — comma-aggregate (`"KNYC,KJFK"`) and plus-backfill (`"KNYC+OLDER"`) syntax
+3. **Composite analyses** — seasonal/monthly aggregates and threshold frequencies, computed across many years in one call
 
-## Quick Start
-
-Install with one command, then ask your LLM:
-
-```bash
-claude mcp add ACIS2LLM -- uvx --from acis2llm acis2llm-mcp
-```
-
-> *"What's the likelihood of snow in Denver this month?"*
-> *"How many days over 100°F did Phoenix have in 2023?"*
-> *"Show me the top 5 snowiest winters on record in Buffalo."*
+The bulk of the value lives in [`skills/acis-weather/`](skills/acis-weather/) — a complete agent skill with an [`agentskills.io`](https://agentskills.io)-compliant `SKILL.md` and 5 reference docs covering xmACIS2Py + the helpers + worked recipes.
 
 ---
 
-## How to Use (LLM Instructions)
+## Install
 
-If you are an LLM reading this README, follow this workflow to answer weather and climate questions:
+This project uses [uv](https://docs.astral.sh/uv/). [Install it first](https://docs.astral.sh/uv/getting-started/installation/) if you don't have it.
 
-1. **If the user mentions a city/location (not a station ID):** Call `find_best_station` with a 5-digit zip code or 4-letter airport code from their query. Use the returned `station_id` for all subsequent tool calls.
-2. **If the user provides a station ID (4-letter code like KDEN, KORD):** Use it directly.
-3. **If the location is ambiguous or missing:** Call `clarify_location` with any previously mentioned locations.
-4. **Choose the right tool based on the question** (see tool tables below).
+```bash
+uv pip install xmacis2py acis2llm
+```
 
-**Example:** *"What was the hottest July in NYC history?"* → `find_best_station("10001")` → get station ID → `monthly_totals_by_year(station="KNYC", variable="tmax", aggregation="max", month="july")`
+Or for one-off scripts without managing a venv:
 
-**Example:** *"How much snow did Buffalo get last winter?"* → `seasonal_summary(station="KBUF", variable="snow", season="winter", aggregation="sum")`
+```bash
+uv run --with xmacis2py --with acis2llm python your_script.py
+```
+
+Requires Python 3.10+ and network access to `data.rcc-acis.org`, `geocoding.geo.census.gov`, and `api.zippopotam.us`. No API keys.
 
 ---
 
-## Setup
+## Use the skill (the agent path)
 
-ACIS2LLM is designed to run via **uv** (the fast Python package manager) for zero-config installation. [Install uv first](https://docs.astral.sh/uv/getting-started/installation/) if you don't have it. Requires Python 3.10+.
+If you're driving an LLM agent (Claude Code, Cursor, Gemini CLI, OpenCode, etc.), point it at the skill and it will know what to do:
 
-### Claude Code / CLI
 ```bash
-claude mcp add ACIS2LLM -- uvx --from acis2llm acis2llm-mcp
+# Copy or symlink skills/acis-weather into your client's skills directory.
+# For Claude Code:
+ln -s "$PWD/skills/acis-weather" ~/.claude/skills/acis-weather
+
+# For project-scoped use, drop it under .claude/skills/ in your repo:
+ln -s "$(pwd)/skills/acis-weather" /path/to/project/.claude/skills/acis-weather
 ```
 
-### Gemini CLI
-```bash
-gemini mcp add ACIS2LLM -- uvx --from acis2llm acis2llm-mcp
-```
-
-### Claude Desktop
-Add this to your `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "ACIS2LLM": {
-      "command": "uvx",
-      "args": ["--from", "acis2llm", "acis2llm-mcp"]
-    }
-  }
-}
-```
-
-### Cursor
-Add a new MCP server in **Settings > Features > MCP**:
-- **Name:** `ACIS2LLM`
-- **Type:** `command`
-- **Command:** `uvx --from acis2llm acis2llm-mcp`
-
-### Universal MCP (Codex, OpenCode, Pi, etc.)
-ACIS2LLM supports any MCP-compliant environment. Generally, you only need to provide the startup command:
-`uvx --from acis2llm acis2llm-mcp`
-
-### Uninstall
-```bash
-claude mcp remove ACIS2LLM
-```
-(Or remove the entry from your config file.)
+The skill is a single `SKILL.md` (under 500 lines) plus `references/` files the agent loads on demand. See the [agentskills.io spec](https://agentskills.io/specification) for the format.
 
 ---
 
-## Data Variables
+## Use the library directly (the human path)
 
-| Code | Variable | Unit |
-|------|----------|------|
+```python
+import xmacis2py
+import acis2llm
+
+# 1. Resolve "Denver, CO" → station ID
+stn = acis2llm.find_best_station("Denver, CO")
+# {'station_id': 'KDEN', 'name': 'DENVER INTL ARPT, CO', 'data_start': 1948, ...}
+
+# 2. Single-station fetch
+df = xmacis2py.get_single_station_acis_data(
+    stn["station_id"],
+    start_date="2023-06-01",
+    end_date="2023-08-31",
+)
+
+# 3. Multi-station aggregate (comma) or backfill (plus)
+df = acis2llm.fetch_stations(
+    "KNYC,KBOS,KORD",
+    from_when="yesterday",
+    time_delta=30,
+)
+
+# 4. Cross-year composite — "snowiest winters in Buffalo"
+result = acis2llm.seasonal_summary(
+    station="KBUF",
+    variable="snow",
+    season="winter",
+    aggregation="sum",
+)
+top5 = sorted(result["table"], key=lambda r: r["value"] or 0, reverse=True)[:5]
+
+# 5. Per-period stat — pair fetch + analysis
+from xmacis2py import analysis
+df = xmacis2py.get_single_station_acis_data("KPHX", start_date="2023-06-01", end_date="2023-08-31")
+days_over_110 = analysis.number_of_days_above_value(df, "Maximum Temperature", 110)
+```
+
+For the full API surface see [`skills/acis-weather/references/acis2llm-api.md`](skills/acis-weather/references/acis2llm-api.md). For end-to-end recipes see [`skills/acis-weather/references/recipes.md`](skills/acis-weather/references/recipes.md).
+
+---
+
+## Variables
+
+| Short | Full xmACIS2Py column | Unit |
+|---|---|---|
 | `tmax` | Maximum Temperature | °F |
 | `tmin` | Minimum Temperature | °F |
 | `tavg` | Average Temperature | °F |
+| `tdpa` | Average Temperature Departure | °F |
 | `prcp` | Precipitation | inches |
 | `snow` | Snowfall | inches |
 | `snow_depth` | Snow Depth | inches |
+| `hdd` / `cdd` / `gdd` | Heating / Cooling / Growing Degree Days | base 65/65/32°F |
 | `awdb` | Average Daily Water Balance | inches |
-| `hdd` | Heating Degree Days | base 65°F |
-| `cdd` | Cooling Degree Days | base 65°F |
-| `gdd` | Growing Degree Days | base 32°F |
-| `tdpa` | Average Temperature Departure | °F |
+
+`acis2llm`'s composite functions accept short codes; xmACIS2Py's analysis functions take the full column names. `acis2llm.VARIABLE_COLUMN_MAP` exports the mapping.
 
 ---
 
-## Capabilities
+## Development
 
-### Geospatial Discovery
-
-| Tool | Use When |
-|------|----------|
-| `find_best_station` | You have a zip code or airport code and need the most reliable nearby station with the longest record |
-| `clarify_location` | The user's location is ambiguous or missing |
-
-### Raw Data & Quick Queries
-
-| Tool | Use When |
-|------|----------|
-| `get_data` | Download raw daily observations for any date range. Supports relative dates like `from_when="last_year"`, multi-station queries with `"ALL"`, and CSV export via `to_csv=true` |
-
-### Statistical Analysis (Single Values)
-
-| Tool | Answers |
-|------|---------|
-| `period_mean` | "What was the average high in July?" |
-| `period_median` / `period_mode` | Median or most common value |
-| `period_maximum` / `period_minimum` | Record highs and lows |
-| `period_sum` | Total precipitation or snowfall |
-| `period_standard_deviation` / `period_variance` | How much did values vary? |
-| `period_skewness` / `period_kurtosis` | Distribution shape |
-| `period_percentile` | "What's the 90th percentile for daily snowfall?" |
-
-### Rankings & Time Series
-
-| Tool | Answers |
-|------|---------|
-| `period_rankings` | Top/bottom extremes with rank order. Use `sort_order="ascending"` for coldest/lowest |
-| `running_sum` | Cumulative totals over time (e.g., year-to-date rainfall) |
-| `running_mean` | Moving averages |
-| `detrend_data` | Remove linear trends to analyze cyclical patterns |
-
-### Threshold Analysis
-
-| Tool | Answers |
-|------|---------|
-| `number_of_days_above` / `below` | "How many days over 90°F?" |
-| `number_of_days_at_or_above` / `at_or_below` | Inclusive thresholds (e.g., freezing: `<= 32`) |
-| `number_of_days_at` | Exact match (e.g., days with exactly 0 precipitation) |
-| `number_of_missing_days` | Data quality check for a period |
-
-### Monthly & Seasonal Aggregates
-
-| Tool | Answers |
-|------|---------|
-| `monthly_totals_by_year` | April snowfall across 50 years of records |
-| `seasonal_summary` | Meteorological seasons (winter Dec-Feb, etc.) by year |
-| `frequency_of_occurrence` | Likelihood: "What's the % chance of snow in October?" |
-| `monthly_threshold_counts` | Year-by-year count of days meeting a threshold (e.g., days <= 32) |
+```bash
+uv sync --extra dev
+uv run pytest
+```
 
 ---
 
-## The Climate Cookbook
+## Layout
 
-| If you want to know... | Use this tool |
-|:---|:---|
-| *"What was the hottest July in NYC history?"* | `monthly_totals_by_year(station="KNYC", variable="tmax", aggregation="max", month="july")` |
-| *"Is it likely to freeze in Miami during January?"* | `frequency_of_occurrence(station="KMIA", variable="tmin", threshold=32, comparison="at_or_below", month="january")` |
-| *"How does this year's rainfall compare to the 30-year average?"* | `running_sum` + `period_mean` |
-| *"Show me the top 5 snowiest winters in Buffalo."* | `seasonal_summary(station="KBUF", variable="snow", season="winter", aggregation="sum")` |
-| *"What was the weather last week in Chicago?"* | `get_data(station="KORD", from_when="last_week")` |
-| *"Compare snowfall across all stations in a region"* | `get_data(station="ALL", start_date="...", end_date="...")` |
-
----
-
-## Common Mistakes to Avoid
-
-| Mistake | Fix |
-|---------|-----|
-| **Using city names as station IDs** | Cities like "Denver" or "Miami" are NOT station IDs. Call `find_best_station("80202")` (zip) or `find_best_station("KDEN")` (airport code) first |
-| **Using wrong sort order for extremes** | For coldest/lowest records, set `sort_order="ascending"` (the default "descending" shows highest first) |
-| **Not checking for missing data** | Call `number_of_missing_days` before reporting totals for sparse periods |
-| **Hallucinating station IDs** | Never make up station IDs. Always discover them via `find_best_station` or use known 4-letter codes (K-prefix for continental US airports) |
-| **Using relative dates without `from_when`** | Relative dates like "last week" require `from_when="last_week"` — they do not work with `start_date`/`end_date` |
-| **Confusing inclusive vs exclusive thresholds** | `at_or_above` / `at_or_below` are inclusive (`>=`, `<=`). `above` / `below` are strictly greater/less |
-| **Using season instead of month (or vice versa)** | `frequency_of_occurrence` and `monthly_threshold_counts` take `month` OR `season`, not both |
+```
+.
+├── src/acis2llm/
+│   ├── __init__.py             public API re-exports
+│   ├── geocoding.py            find_best_station, geocode_census, is_zip_code
+│   ├── composites.py           seasonal_summary, monthly_totals_by_year, ...
+│   └── multi_station.py        fetch_stations (comma + plus syntax)
+├── skills/acis-weather/
+│   ├── SKILL.md                agent-facing playbook (agentskills.io v1)
+│   └── references/             vendored xmACIS2Py docs + recipes + API ref
+└── tests/
+    ├── test_composites.py
+    └── test_multi_station.py
+```
 
 ---
 
-## Troubleshooting
+## Credits
 
-| Problem | Solution |
-|---------|----------|
-| `uv: command not found` | Install uv: `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| Station not found | Use `find_best_station` with a 5-digit zip code or airport code |
-| Empty results | Check date range and that the station has records for that period. Use `number_of_missing_days` to check data gaps |
-| Slow responses | Large date ranges fetch more data. Narrow the range or use aggregated tools instead of `get_data` |
+- Data: [Regional Climate Centers](https://www.rcc-acis.org/overview) via the Applied Climate Information System.
+- Engine: [xmACIS2Py](https://github.com/edrewitz/xmACIS2Py) by Eric J. Drewitz ([@edrewitz](https://github.com/edrewitz)) — MIT-licensed. Documentation in `skills/acis-weather/references/xmacis2py-*.md` is vendored from upstream and reformatted; original copyright preserved.
 
----
-
-## Data & Credits
-
-All data is served in real-time from the **Regional Climate Centers (RCCs)** via the **Applied Climate Information System (ACIS)**.
-
-- **Primary Source**: [rcc-acis.org](https://www.rcc-acis.org/overview)
-- **Engine**: Built on [xmACIS2Py](https://github.com/edrewitz/xmACIS2Py) by Eric J. Drewitz (@edrewitz).
-
----
-
-**License**: MIT | **Author**: [yenba](https://github.com/yenba) | **Issues**: [GitHub](https://github.com/yenba/acis2LLM/issues)
+**License**: MIT — see [LICENSE](LICENSE).
