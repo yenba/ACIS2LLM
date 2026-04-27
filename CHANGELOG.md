@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1] - 2026-04-27
+
+### Fixed
+- `find_best_station` doc/promise mismatch: README, SKILL.md, recipes, and api ref claimed `"City, State"` strings (e.g. `"Denver, CO"`) resolved, but the US Census `onelineaddress` endpoint requires a street-level address so they returned `None` and the function errored. Examples and waterfall docstring updated to reflect what actually resolves: 5-digit ZIPs, station IDs, and full street addresses.
+- `from_when="yesterday"` was shown in README, SKILL.md, and a recipe as a usage example, but xmACIS2Py only accepts a `YYYY-mm-dd` anchor or `datetime`. Examples replaced with explicit-date computation.
+- `monthly_threshold_counts` docstring + api ref now make it explicit that this function does **not** iterate every month — it's a thin alias for `frequency_of_occurrence` requiring exactly one of `month`/`season`.
+
+### Added
+- `frequency_of_occurrence` and `monthly_threshold_counts` accept symbol comparison forms (`">"`, `">="`, `"<"`, `"<="`) as aliases for the long-form names (`"above"`, `"at_or_above"`, `"below"`, `"at_or_below"`).
+- Unknown-comparison and missing-month/season errors now list the valid values.
+- API reference documents the `find_best_station` scoring trade-off (distance can outweigh record length, e.g. KLUF beats KPHX for ZIP 85001 by ~40 points despite KPHX having an 18-year-longer record).
+
 ## [0.2.0] - 2026-04-27
 
 ### Changed
