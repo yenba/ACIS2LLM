@@ -50,7 +50,7 @@ def _fetch_station_data(station, args):
     try:
         s_args = args.copy()
         s_args["station"] = station
-        df = xmacis2py.get_data(**s_args)
+        df = xmacis2py.get_single_station_acis_data(**s_args)
         return station, df
     except Exception:
         return station, None
@@ -119,7 +119,12 @@ def _run_get_data(args):
             base_df["station"] = station_str
             return base_df
 
-        return xmacis2py.get_data(**args)
+        if station_str.strip().upper() == "ALL":
+            s_args = args.copy()
+            s_args["stations"] = s_args.pop("station")
+            return xmacis2py.get_multi_station_acis_data(**s_args)
+
+        return xmacis2py.get_single_station_acis_data(**args)
     except Exception as e:
         # Fallback for unexpected top-level errors
         import logging

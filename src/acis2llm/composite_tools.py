@@ -7,7 +7,7 @@ import numpy as np
 
 try:
     import xmacis2py
-    from xmacis2py import get_data
+    from xmacis2py import get_single_station_acis_data
     XMACIS2PY_AVAILABLE = True
 except ImportError:
     XMACIS2PY_AVAILABLE = False
@@ -451,7 +451,7 @@ def frequency_of_occurrence(station, variable, threshold, comparison,
         last_day = calendar.monthrange(last_year, month_num)[1]
         start_date = f"{first_year}-{month_num:02d}-01"
         end_date = f"{last_year}-{month_num:02d}-{last_day:02d}"
-        df = get_data(station, start_date=start_date, end_date=end_date)
+        df = get_single_station_acis_data(station, start_date=start_date, end_date=end_date)
         return _calculate_frequency(df, column, threshold, comparison,
                                      month=month_num,
                                      start_year=start_year, end_year=end_year)
@@ -468,7 +468,7 @@ def frequency_of_occurrence(station, variable, threshold, comparison,
             start_date = f"{first_year}-{first_month:02d}-01"
             end_date = f"{last_year}-{last_month:02d}-{last_day:02d}"
         
-        df = get_data(station, start_date=start_date, end_date=end_date)
+        df = get_single_station_acis_data(station, start_date=start_date, end_date=end_date)
         return _calculate_frequency(df, column, threshold, comparison,
                                      season=season,
                                      start_year=start_year, end_year=end_year)
@@ -503,7 +503,7 @@ def seasonal_summary(station, variable, season, start_year=None,
         start_date = f"{first_year}-{first_month:02d}-01"
         end_date = f"{last_year}-{last_month:02d}-{last_day:02d}"
 
-    df = get_data(station, start_date=start_date, end_date=end_date)
+    df = get_single_station_acis_data(station, start_date=start_date, end_date=end_date)
 
     return _aggregate_seasonal_by_year(df, column, season_months,
                                          aggregation=aggregation,
@@ -531,7 +531,7 @@ def monthly_totals_by_year(station, variable, month, start_year=None,
     start_date = f"{first_year}-{month_num:02d}-01"
     end_date = f"{last_year}-{month_num:02d}-{last_day:02d}"
 
-    df = get_data(station, start_date=start_date, end_date=end_date)
+    df = get_single_station_acis_data(station, start_date=start_date, end_date=end_date)
 
     return _aggregate_monthly_by_year(df, column, month_num,
                                        aggregation=aggregation,
