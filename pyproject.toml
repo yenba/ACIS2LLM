@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "acis2llm"
-version = "0.1.0"
-description = "Weather and climate data tools powered by NOAA RCC ACIS — MCP server"
+version = "0.2.0"
+description = "Agent-friendly helpers for the xmACIS2Py climate library — station discovery, multi-station fetch, and seasonal/monthly composites. Ships with the acis-weather skill."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
     { name = "yenba" },
 ]
-keywords = ["weather", "climate", "noaa", "acis", "mcp", "llm"]
+keywords = ["weather", "climate", "noaa", "acis", "xmacis2py", "agent-skill", "llm"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -24,7 +24,7 @@ dependencies = [
     "requests>=2.31.0",
     "xmacis2py>=2.0",
     "pandas>=2.0",
-    "mcp>=1.0",
+    "numpy>=1.24",
 ]
 
 [project.urls]
@@ -37,9 +37,6 @@ dev = ["pytest>=7.0", "pytest-mock"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
-[project.scripts]
-acis2llm-mcp = "acis2llm.mcp_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
