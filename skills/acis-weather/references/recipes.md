@@ -10,7 +10,7 @@ Each recipe walks from a user question → station resolution → fetch → anal
 import xmacis2py
 import acis2llm
 
-stn = acis2llm.find_best_station("New York, NY")
+stn = acis2llm.find_best_station("10001")  # NYC ZIP — city-state strings do NOT resolve
 # stn["station_id"] == "KNYC"
 
 result = acis2llm.monthly_totals_by_year(
@@ -37,7 +37,7 @@ Why `monthly_totals_by_year` with `aggregation="max"`: the user is asking about 
 import xmacis2py
 from xmacis2py import analysis
 
-stn = acis2llm.find_best_station("Phoenix, AZ")
+stn = acis2llm.find_best_station("85001")  # Phoenix ZIP — city-state strings do NOT resolve
 df = xmacis2py.get_single_station_acis_data(
     stn["station_id"],
     start_date="2023-01-01",
@@ -56,7 +56,7 @@ Why fetch first, then analyze: this is a single-period scalar — the xmACIS2Py 
 
 ```python
 result = acis2llm.seasonal_summary(
-    station=acis2llm.find_best_station("Buffalo, NY")["station_id"],
+    station=acis2llm.find_best_station("14202")["station_id"],  # Buffalo ZIP
     variable="snow",
     season="winter",
     aggregation="sum",
@@ -75,10 +75,10 @@ Why "winter" not "december": meteorological winter spans Dec–Feb across calend
 
 ```python
 result = acis2llm.frequency_of_occurrence(
-    station=acis2llm.find_best_station("Miami, FL")["station_id"],
+    station=acis2llm.find_best_station("33101")["station_id"],  # Miami ZIP
     variable="tmin",
     threshold=32,
-    comparison="at_or_below",
+    comparison="at_or_below",     # also accepts "<="
     month="january",
 )
 
@@ -93,10 +93,12 @@ Why `at_or_below` not `below`: 32°F is the freezing point — inclusive compari
 ## 5. "Compare today's temperature in NYC, Boston, and Chicago"
 
 ```python
+from datetime import date, timedelta
+yesterday = (date.today() - timedelta(days=1)).isoformat()
 df = acis2llm.fetch_stations(
     "KNYC,KBOS,KORD",
-    from_when="yesterday",
-    time_delta=1,
+    start_date=yesterday,
+    end_date=yesterday,
 )
 
 # df has a 'station' column distinguishing the rows

@@ -47,7 +47,9 @@ No API keys. No rate limits. Network access to `data.rcc-acis.org`,
 ## Mental model
 
 ```
-acis2llm.find_best_station(...)   ── resolve "Denver" / "10001" / "KDEN" → station ID
+acis2llm.find_best_station(...)   ── resolve "10001" (ZIP) / "KDEN" (station ID) → station ID
+                                    (city-state strings like "Denver, CO" do NOT resolve;
+                                     use a ZIP, station ID, or full street address)
                 ↓
 acis2llm.fetch_stations(...)      ── multi-station, with comma-aggregate or +-backfill
    OR
@@ -64,7 +66,7 @@ acis2llm.<composite>(...)         ── seasonal_summary, monthly_totals_by_yea
 
 | User question shape | Use |
 |---|---|
-| Names a city / ZIP / "near X" | First call `acis2llm.find_best_station(location)` to get a station ID. Pass `result["station_id"]` to everything downstream. |
+| Names a ZIP / street address / "near X" | Call `acis2llm.find_best_station(location)` to get a station ID. Pass `result["station_id"]` to everything downstream. **City-state strings like "Denver, CO" do NOT resolve** — convert to a ZIP first, or ask the user for a ZIP/airport code. |
 | Already gives a 4-letter code (KNYC, KLAX, KDEN) | Use it directly — no lookup needed. |
 | Vague location ("the East Coast", "somewhere warm") | Ask a clarifying question. Do **not** guess. |
 | Single-period stat ("avg high in July 2024", "rainiest day in 2023") | `xmacis2py.get_single_station_acis_data(station, start_date, end_date)` then `xmacis2py.analysis.period_*` or `xmacis2py.analysis.number_of_days_*`. |
@@ -108,9 +110,10 @@ When passing a station identifier to `acis2llm.fetch_stations`:
 ## Date conventions
 
 - Explicit dates are `YYYY-MM-DD` strings: `start_date="2023-01-01"`.
-- Relative dates use `from_when` + `time_delta`: `from_when="yesterday", time_delta=30` means "the 30 days ending yesterday."
+- Relative dates use `from_when` (a `YYYY-MM-DD` anchor or `datetime`) + `time_delta` (days back). The literal string `"yesterday"` is **not** accepted — pass an actual date. If you omit `from_when`, xmACIS2Py defaults the anchor to yesterday's date.
 - Composite functions (`seasonal_summary`, `monthly_totals_by_year`, `frequency_of_occurrence`) take `start_year` / `end_year` (integers). If omitted, they fetch the station's full record.
-- For `frequency_of_occurrence` and `monthly_threshold_counts`, provide *exactly one* of `month` or `season` — never both, never neither.
+- For `frequency_of_occurrence` and `monthly_threshold_counts`, provide *exactly one* of `month` or `season` — never both, never neither. (Despite the name, `monthly_threshold_counts` does not iterate every month; it's a thin alias for `frequency_of_occurrence` with a different framing of the result.)
+- Threshold `comparison` accepts both long forms (`"above"`, `"at_or_above"`, `"below"`, `"at_or_below"`) and symbol forms (`">"`, `">="`, `"<"`, `"<="`). They're equivalent.
 - Winter is Dec–Feb and is labeled by the *ending* year (Dec 2023 + Jan/Feb 2024 → Winter 2024).
 
 ## Critical rules
