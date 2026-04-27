@@ -4,7 +4,7 @@
 
 `acis2llm` adds three things on top of `xmacis2py`:
 
-1. **Station discovery** — resolve `"Denver, CO"` / `"10001"` / `"KNYC"` → ACIS station ID
+1. **Station discovery** — resolve `"10001"` (ZIP) / `"KNYC"` (station ID) / `"4600 Silver Hill Rd, Washington, DC"` (street address) → ACIS station ID
 2. **Multi-station fetch** — comma-aggregate (`"KNYC,KJFK"`) and plus-backfill (`"KNYC+OLDER"`) syntax
 3. **Composite analyses** — seasonal/monthly aggregates and threshold frequencies, computed across many years in one call
 
@@ -53,9 +53,11 @@ The skill is a single `SKILL.md` (under 500 lines) plus `references/` files the 
 import xmacis2py
 import acis2llm
 
-# 1. Resolve "Denver, CO" → station ID
-stn = acis2llm.find_best_station("Denver, CO")
+# 1. Resolve a ZIP / station ID / street address → station metadata
+stn = acis2llm.find_best_station("80202")
 # {'station_id': 'KDEN', 'name': 'DENVER INTL ARPT, CO', 'data_start': 1948, ...}
+# Note: "City, State" alone does not resolve — pass a ZIP, a station ID
+# (e.g. "KDEN"), or a full street address.
 
 # 2. Single-station fetch
 df = xmacis2py.get_single_station_acis_data(
@@ -67,8 +69,8 @@ df = xmacis2py.get_single_station_acis_data(
 # 3. Multi-station aggregate (comma) or backfill (plus)
 df = acis2llm.fetch_stations(
     "KNYC,KBOS,KORD",
-    from_when="yesterday",
-    time_delta=30,
+    start_date="2024-06-01",
+    end_date="2024-06-30",
 )
 
 # 4. Cross-year composite — "snowiest winters in Buffalo"
@@ -80,10 +82,16 @@ result = acis2llm.seasonal_summary(
 )
 top5 = sorted(result["table"], key=lambda r: r["value"] or 0, reverse=True)[:5]
 
-# 5. Per-period stat — pair fetch + analysis
-from xmacis2py import analysis
-df = xmacis2py.get_single_station_acis_data("KPHX", start_date="2023-06-01", end_date="2023-08-31")
-days_over_110 = analysis.number_of_days_above_value(df, "Maximum Temperature", 110)
+# 5. Threshold frequency — "100°F+ days each summer at Phoenix"
+result = acis2llm.frequency_of_occurrence(
+    station="KPHX",
+    variable="tmax",
+    threshold=100,
+    comparison=">=",          # also accepts "at_or_above"
+    season="summer",
+    start_year=2015,
+    end_year=2023,
+)
 ```
 
 For the full API surface see [`skills/acis-weather/references/acis2llm-api.md`](skills/acis-weather/references/acis2llm-api.md). For end-to-end recipes see [`skills/acis-weather/references/recipes.md`](skills/acis-weather/references/recipes.md).

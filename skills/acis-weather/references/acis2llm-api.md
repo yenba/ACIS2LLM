@@ -2,7 +2,7 @@
 
 The `acis2llm` package adds three layers on top of `xmacis2py`:
 
-1. **Station discovery** — resolve "Denver, CO" / `"10001"` / `"KNYC"` → station ID
+1. **Station discovery** — resolve `"10001"` (ZIP) / `"KNYC"` (station ID) / a full street address → station ID. Plain `"City, State"` strings do **not** resolve — convert to a ZIP first.
 2. **Multi-station fetch** — comma-aggregate and `+`-backfill helpers
 3. **Composite analyses** — seasonal/monthly aggregates and threshold frequencies, computed across many years with one call
 
@@ -26,13 +26,15 @@ acis2llm.find_best_station(location: str) -> dict
 Resolve a free-form location to the ACIS station with the longest, most-recent record nearby. Tries, in order:
 
 1. Direct ACIS StnMeta lookup if `location` looks like a station ID (4-letter ICAO or 5-digit COOP).
-2. Geocode via Zippopotam (for ZIPs) or US Census (for city/state).
-3. ACIS bbox search around the geocoded coordinates, scored by:
+2. Geocode via Zippopotam (5-digit ZIP) or US Census (full street address). Plain `"City, State"` strings will **not** resolve — convert to a ZIP first.
+3. ACIS bbox search (~0.5° around the geocoded point), scored by:
    - Active record (latest year ≥ current − 1): **+1000**
    - State match with geocoded address: **+2000**
    - Earlier start year: **−1 per year after 1800**
    - Distance: **−200 per degree**
-4. Backfill: if a co-located station within ~10mi has an earlier start, the returned `station_id` is a `+`-joined spec like `"KNYC+OLDER"`. Pass that string straight to `acis2llm.fetch_stations` to get a backfilled DataFrame.
+
+   The single highest-scoring station wins. With these weights, distance can outweigh record length when stations are tightly clustered: e.g. for ZIP 85001 (Phoenix), KLUF (Luke AFB, dist 0.16°, 1951–) beats KPHX (Sky Harbor, dist 0.44°, 1933–) by ~40 points despite KPHX having an 18-year-longer record.
+4. Backfill: if a co-located station within ~10mi has an earlier start, the returned `station_id` is a `+`-joined spec like `"KLUF+025282"`. Pass that string straight to `acis2llm.fetch_stations` to get the combined record.
 
 **Returns** — dict with:
 
@@ -54,7 +56,7 @@ On failure, returns `{"error": "..."}`.
 
 ### `geocode_census(location)`
 
-Lower-level geocoder — returns `{"lat", "lon", "display_name"}` or `None`. Tries Zippopotam first for 5-digit ZIPs, falls back to US Census Geocoder.
+Lower-level geocoder — returns `{"lat", "lon", "display_name"}` or `None`. Tries Zippopotam first for 5-digit ZIPs, falls back to US Census Geocoder (street-address only). Plain `"City, State"` queries return `None` because the Census `onelineaddress` endpoint requires a street-level address.
 
 ### `is_zip_code(location) -> bool`
 
@@ -133,7 +135,7 @@ Aggregates `variable` for one calendar month across many years. e.g. April snowf
 ```python
 acis2llm.frequency_of_occurrence(
     station, variable, threshold,
-    comparison,                 # 'above' | 'at_or_above' | 'below' | 'at_or_below'
+    comparison,                 # 'above'/'>', 'at_or_above'/'>=', 'below'/'<', 'at_or_below'/'<='
     month=None,                 # provide month OR season, not both
     season=None,
     start_year=None, end_year=None,
@@ -146,7 +148,7 @@ Returned dict adds `count` (years where it happened at all), `total_years`, and 
 
 ### `monthly_threshold_counts(...)`
 
-Same signature and return shape as `frequency_of_occurrence` — alias emphasizing the per-year `days_met` counts in `table`.
+Same signature and return shape as `frequency_of_occurrence` — a thin alias emphasizing the per-year `days_met` counts in `table`. **Despite the name it does not iterate every month**: you must still pass exactly one of `month` or `season`. To compare counts across all twelve months, call this once per month and assemble the results yourself.
 
 ---
 

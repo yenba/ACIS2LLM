@@ -232,7 +232,9 @@ def find_best_station(location: str):
 
     Waterfall:
       1. Direct ACIS StnMeta lookup if `location` looks like a station ID
-      2. Geocode via Zippopotam (ZIPs) or US Census (city/state)
+      2. Geocode via Zippopotam (5-digit ZIP) or US Census (street address —
+         note: "City, State" alone does *not* resolve via Census; pass a ZIP
+         or station ID for cities)
       3. ACIS bbox search around the geocoded coordinates, scored by:
          active record (+1000), state match (+2000), record length, proximity
       4. If a co-located older station exists within ~10mi, return a backfill
