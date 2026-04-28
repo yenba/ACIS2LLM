@@ -303,8 +303,9 @@ def frequency_of_occurrence(station, variable, threshold, comparison,
 
     season_months = _get_season_months(season)
     if 12 in season_months and 1 in season_months:
+        feb_last = calendar.monthrange(last_year, 2)[1]
         start_date = f"{first_year - 1}-12-01"
-        end_date = f"{last_year}-02-28"
+        end_date = f"{last_year}-02-{feb_last:02d}"
     else:
         first_month = min(season_months)
         last_month = max(season_months)
@@ -330,8 +331,9 @@ def seasonal_summary(station, variable, season, start_year=None, end_year=None,
     first_year, last_year = _resolve_year_window(station, start_year, end_year)
 
     if 12 in season_months and 1 in season_months:
+        feb_last = calendar.monthrange(last_year, 2)[1]
         start_date = f"{first_year - 1}-12-01"
-        end_date = f"{last_year}-02-28"
+        end_date = f"{last_year}-02-{feb_last:02d}"
     else:
         first_month = min(season_months)
         last_month = max(season_months)
