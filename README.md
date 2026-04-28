@@ -125,6 +125,14 @@ uv run pytest
 
 ---
 
+## Iterating on the skill
+
+We improve `acis-weather` by driving real LLM agents through real weather queries and capturing what breaks. After a session that exercised the skill, paste the contents of [`docs/field-reports/DEBRIEF-PROMPT.md`](docs/field-reports/DEBRIEF-PROMPT.md) into the same chat. The agent will self-debrief and write either a one-line entry to [`docs/field-reports/log.md`](docs/field-reports/log.md) or a full structured report file alongside it. Works in any host (Claude Code, opencode, Gemini CLI, pi, etc.) — it's just a pasteable prompt.
+
+The agent never edits the skill or the library; reports are triage input. To act on a report, either fix it directly or kick off a spec under [`docs/superpowers/specs/`](docs/superpowers/specs/), then rename the report file with a `RESOLVED-` prefix to keep the historical trail.
+
+---
+
 ## Layout
 
 ```
