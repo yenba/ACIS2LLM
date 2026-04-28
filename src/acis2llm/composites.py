@@ -274,11 +274,21 @@ def frequency_of_occurrence(station, variable, threshold, comparison,
                              month=None, season=None, start_year=None, end_year=None):
     """How often (across years) a daily threshold is met in a given month or season.
 
-    Returns a dict with `count`, `total_years`, `percentage`, `table`, `summary`.
     Provide exactly one of ``month`` or ``season``.
 
     `comparison` accepts ``"above"`` / ``">"``, ``"at_or_above"`` / ``">="``,
     ``"below"`` / ``"<"``, or ``"at_or_below"`` / ``"<="``.
+
+    Returns a dict (NOT a DataFrame):
+        {
+            "count": int,           # years where threshold was met at all
+            "total_years": int,
+            "percentage": float,    # 0-100
+            "table": [{"year": int, "days_met": int, "value": float|None,
+                       "mean_value": float|None, "extreme_value": float|None,
+                       "met_condition": bool}, ...],
+            "summary": str,
+        }
     """
     if month is None and season is None:
         raise ValueError(
@@ -325,6 +335,12 @@ def seasonal_summary(station, variable, season, start_year=None, end_year=None,
 
     Winter is Dec–Feb and is labeled by the *ending* year (Dec 2023 → Winter 2024).
     `aggregation` is one of "sum", "mean", "max", "min".
+
+    Returns a dict (NOT a DataFrame):
+        {
+            "table": [{"year": int, "value": float|None, "missing_days": int}, ...],
+            "summary": str,
+        }
     """
     season_months = _get_season_months(season)
     column = VARIABLE_COLUMN_MAP.get(variable, variable)
@@ -352,6 +368,12 @@ def monthly_totals_by_year(station, variable, month, start_year=None, end_year=N
     """Aggregate a variable for one calendar month across many years.
 
     e.g. April snowfall every year on record → ``aggregation="sum"``.
+
+    Returns a dict (NOT a DataFrame):
+        {
+            "table": [{"year": int, "value": float|None, "missing_days": int}, ...],
+            "summary": str,
+        }
     """
     month_num = _parse_month(month)
     column = VARIABLE_COLUMN_MAP.get(variable, variable)
