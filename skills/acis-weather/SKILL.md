@@ -4,7 +4,7 @@ description: Query NOAA RCC ACIS historical weather and climate observations for
 license: MIT
 compatibility: Requires Python 3.10+, `uv` (https://docs.astral.sh/uv/), and network access to data.rcc-acis.org, geocoding.geo.census.gov, and api.zippopotam.us.
 metadata:
-  version: "0.2.0"
+  version: "0.2.2"
   upstream: https://github.com/edrewitz/xmACIS2Py
 ---
 
@@ -78,7 +78,7 @@ acis2llm.<composite>(...)         ── seasonal_summary, monthly_totals_by_yea
 
 ## Variable codes
 
-`acis2llm` composites accept short codes; xmACIS2Py analysis functions need the full column name. Both forms shown:
+`acis2llm` composites accept short codes; xmACIS2Py analysis functions need the full column name. The "Full" column below is also **literally the column name in the DataFrame** returned by `get_single_station_acis_data` / `fetch_stations` — e.g. `df["Average Temperature"]`, not `df["tavg"]`.
 
 | Short | Full xmACIS2Py column | Unit |
 |---|---|---|
@@ -95,6 +95,16 @@ acis2llm.<composite>(...)         ── seasonal_summary, monthly_totals_by_yea
 | `awdb` | Average Daily Water Balance | inches |
 
 For trace precipitation, the threshold-count functions accept the literal `value="T"`.
+
+## Return shapes at a glance
+
+| Call | Returns |
+|---|---|
+| `xmacis2py.get_single_station_acis_data(...)` | `pandas.DataFrame` — columns are the **Full** names from the table above (e.g. `"Average Temperature"`, `"Maximum Temperature"`), plus a `"Date"` column. Not snake_case. |
+| `acis2llm.fetch_stations(...)` | `pandas.DataFrame` — same columns plus a `station` column. |
+| `acis2llm.seasonal_summary(...)` / `monthly_totals_by_year(...)` | `dict` — `{"table": [{"year", "value", "missing_days"}, ...], "summary": str}` |
+| `acis2llm.frequency_of_occurrence(...)` / `monthly_threshold_counts(...)` | `dict` — adds `count`, `total_years`, `percentage`; `table` rows have `days_met`, `mean_value`, `extreme_value`, `met_condition`. |
+| `xmacis2py.analysis.<func>(df, "Full Column Name", ...)` | scalar or list — see `references/xmacis2py-analysis.md`. |
 
 ## Multi-station spec syntax
 
