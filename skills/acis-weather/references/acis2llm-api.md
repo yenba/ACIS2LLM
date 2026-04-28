@@ -101,14 +101,14 @@ Each composite fetches its own data window and returns a structured dict:
 
 `frequency_of_occurrence` and `monthly_threshold_counts` additionally include `count`, `total_years`, and `percentage` fields.
 
-All composites accept short variable codes (`"tmax"`, `"prcp"`, `"snow"`, …) and translate them to the xmACIS2Py column names via `acis2llm.VARIABLE_COLUMN_MAP`.
+All composites take a `parameter` argument (matching the keyword used by `xmacis2py.analysis.*`). It accepts either a short code (`"tmax"`, `"prcp"`, `"snow"`, …) or a full xmACIS2Py column name (`"Maximum Temperature"`); short codes are translated via `acis2llm.VARIABLE_COLUMN_MAP`.
 
-### `seasonal_summary(station, variable, season, ...)`
+### `seasonal_summary(station, parameter, season, ...)`
 
 ```python
 acis2llm.seasonal_summary(
     station,                    # str — accepts the same specs as fetch_stations
-    variable,                   # short code or full xmACIS2Py column name
+    parameter,                  # short code or full xmACIS2Py column name
     season,                     # 'winter' | 'spring' | 'summer' | 'fall' | 'autumn'
     start_year=None,            # default: station's earliest year on record
     end_year=None,              # default: current year
@@ -116,25 +116,25 @@ acis2llm.seasonal_summary(
 )
 ```
 
-Aggregates `variable` over a meteorological season, year by year. Winter is Dec–Feb and is labeled by the *ending* year (Dec 2023 → Winter 2024). Years with fewer than ~20 days/month are dropped as partial seasons.
+Aggregates `parameter` over a meteorological season, year by year. Winter is Dec–Feb and is labeled by the *ending* year (Dec 2023 → Winter 2024). Years with fewer than ~20 days/month are dropped as partial seasons.
 
-### `monthly_totals_by_year(station, variable, month, ...)`
+### `monthly_totals_by_year(station, parameter, month, ...)`
 
 ```python
 acis2llm.monthly_totals_by_year(
-    station, variable, month,   # month: int 1-12, name, or abbreviation
+    station, parameter, month,  # month: int 1-12, name, or abbreviation
     start_year=None, end_year=None,
     aggregation='sum',          # 'sum' | 'mean' | 'max' | 'min'
 )
 ```
 
-Aggregates `variable` for one calendar month across many years. e.g. April snowfall in NYC every year on record.
+Aggregates `parameter` for one calendar month across many years. e.g. April snowfall in NYC every year on record.
 
-### `frequency_of_occurrence(station, variable, threshold, comparison, ...)`
+### `frequency_of_occurrence(station, parameter, threshold, comparison, ...)`
 
 ```python
 acis2llm.frequency_of_occurrence(
-    station, variable, threshold,
+    station, parameter, threshold,
     comparison,                 # 'above'/'>', 'at_or_above'/'>=', 'below'/'<', 'at_or_below'/'<='
     month=None,                 # provide month OR season, not both
     season=None,
@@ -144,7 +144,7 @@ acis2llm.frequency_of_occurrence(
 
 How often (across years) the daily value meets a threshold during a given month or season. Years with > 10% missing data in the target window are dropped.
 
-Returned dict adds `count` (years where it happened at all), `total_years`, and `percentage`.
+Returned dict adds `count` (years where it happened at all), `total_years`, and `percentage`. Per-row keys: `year`, `days_met` (the count of days the threshold was met that year — sort by this to find the most-extreme year), `mean_value`, `extreme_value` (the most-extreme **observed value** that year, e.g. coldest temp; not a count), `met_condition`.
 
 ### `monthly_threshold_counts(...)`
 

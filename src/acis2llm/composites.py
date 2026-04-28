@@ -243,7 +243,6 @@ def _calculate_frequency(df, column, threshold, comparison, month=None, season=N
         table.append({
             "year": int(row["_year"]),
             "days_met": int(row["days_matched"]),
-            "value": round(float(ev), 3) if pd.notna(ev) else None,
             "mean_value": round(float(mv), 3) if pd.notna(mv) else None,
             "extreme_value": round(float(ev), 3) if pd.notna(ev) else None,
             "met_condition": bool(row["days_matched"] > 0),
@@ -270,7 +269,7 @@ def _resolve_year_window(station, start_year, end_year):
     return first, last
 
 
-def frequency_of_occurrence(station, variable, threshold, comparison,
+def frequency_of_occurrence(station, parameter, threshold, comparison,
                              month=None, season=None, start_year=None, end_year=None):
     """How often (across years) a daily threshold is met in a given month or season.
 
@@ -284,11 +283,15 @@ def frequency_of_occurrence(station, variable, threshold, comparison,
             "count": int,           # years where threshold was met at all
             "total_years": int,
             "percentage": float,    # 0-100
-            "table": [{"year": int, "days_met": int, "value": float|None,
+            "table": [{"year": int, "days_met": int,
                        "mean_value": float|None, "extreme_value": float|None,
                        "met_condition": bool}, ...],
             "summary": str,
         }
+
+    `days_met` is the count of days the threshold was met that year (sort by
+    this to find the worst year). `extreme_value` is the most-extreme observed
+    value that year (e.g. coldest temp for `"at_or_below"`), NOT a count.
     """
     if month is None and season is None:
         raise ValueError(
@@ -298,7 +301,7 @@ def frequency_of_occurrence(station, variable, threshold, comparison,
     if month is not None and season is not None:
         raise ValueError("Provide 'month' or 'season', not both.")
 
-    column = VARIABLE_COLUMN_MAP.get(variable, variable)
+    column = VARIABLE_COLUMN_MAP.get(parameter, parameter)
     first_year, last_year = _resolve_year_window(station, start_year, end_year)
 
     if month is not None:
@@ -329,7 +332,7 @@ def frequency_of_occurrence(station, variable, threshold, comparison,
                                  start_year=start_year, end_year=end_year)
 
 
-def seasonal_summary(station, variable, season, start_year=None, end_year=None,
+def seasonal_summary(station, parameter, season, start_year=None, end_year=None,
                       aggregation="sum"):
     """Aggregate a variable across a meteorological season, year by year.
 
@@ -343,7 +346,7 @@ def seasonal_summary(station, variable, season, start_year=None, end_year=None,
         }
     """
     season_months = _get_season_months(season)
-    column = VARIABLE_COLUMN_MAP.get(variable, variable)
+    column = VARIABLE_COLUMN_MAP.get(parameter, parameter)
     first_year, last_year = _resolve_year_window(station, start_year, end_year)
 
     if 12 in season_months and 1 in season_months:
@@ -363,7 +366,7 @@ def seasonal_summary(station, variable, season, start_year=None, end_year=None,
                                         start_year=start_year, end_year=end_year)
 
 
-def monthly_totals_by_year(station, variable, month, start_year=None, end_year=None,
+def monthly_totals_by_year(station, parameter, month, start_year=None, end_year=None,
                             aggregation="sum"):
     """Aggregate a variable for one calendar month across many years.
 
@@ -376,7 +379,7 @@ def monthly_totals_by_year(station, variable, month, start_year=None, end_year=N
         }
     """
     month_num = _parse_month(month)
-    column = VARIABLE_COLUMN_MAP.get(variable, variable)
+    column = VARIABLE_COLUMN_MAP.get(parameter, parameter)
     first_year, last_year = _resolve_year_window(station, start_year, end_year)
 
     last_day = calendar.monthrange(last_year, month_num)[1]
@@ -389,7 +392,7 @@ def monthly_totals_by_year(station, variable, month, start_year=None, end_year=N
                                        start_year=start_year, end_year=end_year)
 
 
-def monthly_threshold_counts(station, variable, threshold, comparison,
+def monthly_threshold_counts(station, parameter, threshold, comparison,
                               month=None, season=None, start_year=None, end_year=None):
     """Per-year count of days meeting a threshold in a single month or season.
 
@@ -401,6 +404,6 @@ def monthly_threshold_counts(station, variable, threshold, comparison,
     `comparison` accepts ``"above"`` / ``">"``, ``"at_or_above"`` / ``">="``,
     ``"below"`` / ``"<"``, or ``"at_or_below"`` / ``"<="``.
     """
-    return frequency_of_occurrence(station, variable, threshold, comparison,
+    return frequency_of_occurrence(station, parameter, threshold, comparison,
                                     month=month, season=season,
                                     start_year=start_year, end_year=end_year)

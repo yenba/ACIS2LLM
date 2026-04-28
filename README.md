@@ -76,7 +76,7 @@ df = acis2llm.fetch_stations(
 # 4. Cross-year composite — "snowiest winters in Buffalo"
 result = acis2llm.seasonal_summary(
     station="KBUF",
-    variable="snow",
+    parameter="snow",
     season="winter",
     aggregation="sum",
 )
@@ -85,7 +85,7 @@ top5 = sorted(result["table"], key=lambda r: r["value"] or 0, reverse=True)[:5]
 # 5. Threshold frequency — "100°F+ days each summer at Phoenix"
 result = acis2llm.frequency_of_occurrence(
     station="KPHX",
-    variable="tmax",
+    parameter="tmax",
     threshold=100,
     comparison=">=",          # also accepts "at_or_above"
     season="summer",
