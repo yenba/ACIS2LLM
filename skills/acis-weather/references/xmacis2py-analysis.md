@@ -10,6 +10,14 @@ DataFrame returned by `get_single_station_acis_data` (or any equivalent —
 including DataFrames built from `acis2llm.fetch_stations`). They take the
 DataFrame plus a `parameter` string naming the column.
 
+**Import note:** `xmacis2py.analysis` is an *attribute alias* exposed by
+`xmacis2py/__init__.py`, not a real submodule. So `import xmacis2py` followed
+by `xmacis2py.analysis.period_mean(...)` works, and `from xmacis2py import
+analysis` works — but `import xmacis2py.analysis as analysis` raises
+`ModuleNotFoundError`. (The real path is
+`xmacis2py.analysis_tools.analysis`, which also imports cleanly if you need
+the dotted form.)
+
 ## Valid `parameter` values
 
 ```

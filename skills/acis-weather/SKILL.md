@@ -4,7 +4,7 @@ description: Query NOAA RCC ACIS historical weather and climate observations for
 license: MIT
 compatibility: Requires Python 3.10+, `uv` (https://docs.astral.sh/uv/), and network access to data.rcc-acis.org, geocoding.geo.census.gov, and api.zippopotam.us.
 metadata:
-  version: "0.2.2"
+  version: "0.2.3"
   upstream: https://github.com/edrewitz/xmACIS2Py
 ---
 
@@ -61,6 +61,23 @@ acis2llm.<composite>(...)         ── seasonal_summary, monthly_totals_by_yea
                                     frequency_of_occurrence, monthly_threshold_counts
                                     (these wrap fetch+analysis in one call)
 ```
+
+## API gotchas (read before writing code)
+
+These are the failure modes real agents have hit. Every line below is a pattern that *looks* reasonable and *will not work* — verified against the actual installed library.
+
+| Wrong | Right |
+|---|---|
+| `import xmacis2py.analysis` | `import xmacis2py` then `xmacis2py.analysis.period_mean(...)`, **or** `from xmacis2py import analysis`. The `analysis` name is an attribute alias, not a real submodule — `import xmacis2py.analysis` raises `ModuleNotFoundError`. |
+| `get_single_station_acis_data(station, variables="tmax")` | `get_single_station_acis_data(station, start_date, end_date)`. There is **no `variables=` / `variable=` parameter**. The function always returns all columns; filter the DataFrame yourself: `df[["Date", "Maximum Temperature"]]`. |
+| `df["tmax"]`, `df["tmin"]`, `df["prcp"]` | `df["Maximum Temperature"]`, `df["Minimum Temperature"]`, `df["Precipitation"]`. Returned columns are the **full English** names from the table below. Short codes (`tmax`, `tmin`, …) are only accepted by `acis2llm` composites, never by xmACIS2Py functions or the returned DataFrame. |
+| `xmacis2py.analysis.period_mean(df, variable="tmax")` | `xmacis2py.analysis.period_mean(df, parameter="Maximum Temperature")` — keyword is `parameter`, value is the full English column name. |
+| `seasonal_summary(station_ids="KLEX", season="JJA")` | `seasonal_summary(station="KLEX", season="summer")`. Param is `station` (singular). Season values are full English words: `"winter"`, `"spring"`, `"summer"`, `"fall"`/`"autumn"` — meteorological codes (`"DJF"`, `"JJA"`) are **not** accepted. |
+| `get_single_station_climate_normals(station, start_year=1991, end_year=2020)` | `get_single_station_climate_normals(station, interval="daily", start_date="1991-01-01", end_date="2020-12-31")`. Normals/departures use **date strings**, not year integers, and have an `interval` arg (`"daily"`/`"monthly"`/`"yearly"`). Only the `acis2llm` composites take `start_year`/`end_year`. |
+| `seasonal_summary(...)` returns a DataFrame; do `.loc[...]` / `.idxmax()` | Composites return a **`dict`** — `{"table": [...], "summary": str}`. Convert with `pd.DataFrame(result["table"])` before DataFrame ops. See "Return shapes at a glance" below. |
+| Counting zero-snowfall years with `(annual_snow == 0)` | Use `(annual_snow <= 0.01)`. ACIS reports trace amounts as `0.0` or near-zero values, so strict `== 0` undercounts genuinely snowless years. (For the threshold-count functions, pass the literal `value="T"` to count trace-or-above precip days.) |
+
+If a call fails with `TypeError: unexpected keyword argument` or `KeyError`, **don't guess** — check this table or run `inspect.signature(fn)`.
 
 ## Decision tree
 
@@ -121,7 +138,8 @@ When passing a station identifier to `acis2llm.fetch_stations`:
 
 - Explicit dates are `YYYY-MM-DD` strings: `start_date="2023-01-01"`.
 - Relative dates use `from_when` (a `YYYY-MM-DD` anchor or `datetime`) + `time_delta` (days back). The literal string `"yesterday"` is **not** accepted — pass an actual date. If you omit `from_when`, xmACIS2Py defaults the anchor to yesterday's date.
-- Composite functions (`seasonal_summary`, `monthly_totals_by_year`, `frequency_of_occurrence`) take `start_year` / `end_year` (integers). If omitted, they fetch the station's full record.
+- `acis2llm` composite functions (`seasonal_summary`, `monthly_totals_by_year`, `frequency_of_occurrence`) take `start_year` / `end_year` (integers). If omitted, they fetch the station's full record.
+- `xmacis2py.get_single_station_climate_normals` / `get_single_station_departures` take `start_date` / `end_date` (date strings) plus an `interval` arg, **not** year integers. See the gotchas table above.
 - For `frequency_of_occurrence` and `monthly_threshold_counts`, provide *exactly one* of `month` or `season` — never both, never neither. (Despite the name, `monthly_threshold_counts` does not iterate every month; it's a thin alias for `frequency_of_occurrence` with a different framing of the result.)
 - Threshold `comparison` accepts both long forms (`"above"`, `"at_or_above"`, `"below"`, `"at_or_below"`) and symbol forms (`">"`, `">="`, `"<"`, `"<="`). They're equivalent.
 - Winter is Dec–Feb and is labeled by the *ending* year (Dec 2023 + Jan/Feb 2024 → Winter 2024).

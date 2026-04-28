@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.3] - 2026-04-28
+
+### Changed
+- `xmacis2py` floor raised from `>=2.0` to `>=2.4`. Versions 2.0–2.3 ship a renamed/abridged top-level API (`get_data` instead of `get_single_station_acis_data`, no normals/departures functions) so `from acis2llm import seasonal_summary` raised `ImportError` against any of those installs. 2.4 restores the names this package and SKILL.md reference.
+- SKILL.md: new "API gotchas" section listing seven wrong-vs-right call patterns observed in field reports — `import xmacis2py.analysis` failing (it's an attribute alias, not a real submodule), `variables=`/`variable=` not being a valid arg on `get_single_station_acis_data` (always returns all columns), `parameter=` being the keyword for `xmacis2py.analysis.*` (with full English column names as values), `seasonal_summary` taking `station=` not `station_ids=` and English-only season names (`"summer"`, not `"JJA"`), `get_single_station_climate_normals` taking date strings + `interval` rather than `start_year`/`end_year`, composites returning `dict` not DataFrame, and `<= 0.01` for trace zero-snowfall comparisons.
+- "Date conventions" section now distinguishes `acis2llm` composite year-int args from `xmacis2py` normals/departures date-string args.
+- `references/xmacis2py-analysis.md` now spells out the three import paths that work for `xmacis2py.analysis` and the one that doesn't.
+
 ## [0.2.2] - 2026-04-28
 
 ### Fixed
