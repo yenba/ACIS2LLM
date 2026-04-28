@@ -15,7 +15,7 @@ stn = acis2llm.find_best_station("10001")  # NYC ZIP — city-state strings do N
 
 result = acis2llm.monthly_totals_by_year(
     station=stn["station_id"],
-    variable="tmax",
+    parameter="tmax",
     month="july",
     aggregation="max",
 )
@@ -57,7 +57,7 @@ Why fetch first, then analyze: this is a single-period scalar — the xmACIS2Py 
 ```python
 result = acis2llm.seasonal_summary(
     station=acis2llm.find_best_station("14202")["station_id"],  # Buffalo ZIP
-    variable="snow",
+    parameter="snow",
     season="winter",
     aggregation="sum",
 )
@@ -76,7 +76,7 @@ Why "winter" not "december": meteorological winter spans Dec–Feb across calend
 ```python
 result = acis2llm.frequency_of_occurrence(
     station=acis2llm.find_best_station("33101")["station_id"],  # Miami ZIP
-    variable="tmin",
+    parameter="tmin",
     threshold=32,
     comparison="at_or_below",     # also accepts "<="
     month="january",

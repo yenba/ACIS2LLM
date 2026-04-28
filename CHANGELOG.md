@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.0] - 2026-04-28
+
+### Breaking
+- Composite functions (`seasonal_summary`, `monthly_totals_by_year`, `frequency_of_occurrence`, `monthly_threshold_counts`) renamed their second positional/keyword arg from `variable` to `parameter`, matching the keyword used by `xmacis2py.analysis.*`. Callers passing the keyword form (`seasonal_summary(station="KNYC", variable="snow", ...)`) must update to `parameter="snow"`. Positional callers are unaffected. Composites still accept both short codes (`"snow"`) and full English column names (`"Snowfall"`) as the value, so the only change is the keyword name. Driven by repeated field-report friction where agents conflated the two namespaces' keyword names.
+- `frequency_of_occurrence` / `monthly_threshold_counts` per-row dict no longer includes the redundant `value` key (it was a literal duplicate of `extreme_value`). Callers using `row["value"]` on these results must switch to `row["extreme_value"]`. `seasonal_summary` and `monthly_totals_by_year` rows still expose `value` (the aggregation result) — those are unchanged.
+
+### Changed
+- `references/acis2llm-api.md` and SKILL.md gotchas/variable-codes sections rewritten for the unified `parameter=` API. The two-namespace keyword split is gone, so the gotchas table dropped the row that explained it; the row about `xmacis2py.analysis` keyword usage remains (the value-type difference — short code vs full English — is still real).
+- `frequency_of_occurrence` docstring now spells out per-row key semantics inline: `days_met` is the count, `extreme_value` is the most-extreme observed value (not a count).
+
 ## [0.2.4] - 2026-04-28
 
 ### Changed

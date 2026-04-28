@@ -172,8 +172,8 @@ class TestCalculateFrequency:
             nyc_df, "Snowfall", month=4, threshold=0, comparison="above",
         )
         for row in result["table"]:
-            if row["value"] is not None:
-                assert row["met_condition"] is (row["value"] > 0)
+            if row["extreme_value"] is not None:
+                assert row["met_condition"] is (row["extreme_value"] > 0)
 
     def test_at_or_above_comparison(self, nyc_df):
         result = _calculate_frequency(
