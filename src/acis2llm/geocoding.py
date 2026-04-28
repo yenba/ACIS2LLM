@@ -241,6 +241,8 @@ def find_best_station(location: str):
          spec like "KNYC+OLDER" (see `multi_station.fetch_stations`)
     """
     location = location.strip()
+    if not location:
+        return {"error": "Empty location. Provide a 5-digit ZIP, a 4-letter airport code, or a US street address."}
     current_year = datetime.now().year
 
     if _looks_like_station_id(location):
@@ -252,9 +254,9 @@ def find_best_station(location: str):
     if not geo:
         return {
             "error": (
-                f"Location '{location}' is not a valid 5-digit ZIP code or airport/station ID. "
-                "Provide a 5-digit ZIP (e.g. '33126') or a 4-letter airport code (e.g. 'KMIA') "
-                "for best accuracy."
+                f"Could not resolve '{location}' to a US location. ACIS covers US stations only; "
+                "non-US locations are not supported. For US locations, a 5-digit ZIP (e.g. '33126') "
+                "or a 4-letter airport code (e.g. 'KMIA') gives the most reliable result."
             )
         }
 

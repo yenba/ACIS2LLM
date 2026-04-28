@@ -378,7 +378,7 @@ class TestFindBestStationWaterfall:
         mock_geocode.return_value = None
         result = find_best_station("Middle of Nowhere")
         assert "error" in result
-        assert "not a valid 5-digit ZIP code" in result["error"] or "not a valid 5-digit zip" in result["error"]
+        assert "Could not resolve" in result["error"] and "Middle of Nowhere" in result["error"]
 
     @patch("acis2llm.geocoding.geocode_census")
     @patch("acis2llm.geocoding.requests.post")
