@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.2] - 2026-04-28
+
+### Fixed
+- SKILL.md frontmatter version had drifted to `0.2.0` while package was at `0.2.1`. Synced.
+
+### Changed
+- Composite return shapes are now spelled out in `seasonal_summary`, `monthly_totals_by_year`, and `frequency_of_occurrence` docstrings (`"Returns a dict (NOT a DataFrame)"` with the full key/value layout). Surfaced from real LLM friction: agents called these expecting a DataFrame and had to inspect to discover the dict shape.
+- SKILL.md "Variable codes" section now states explicitly that the "Full xmACIS2Py column" names are the literal column names in the DataFrame returned by `get_single_station_acis_data` / `fetch_stations` (e.g. `df["Average Temperature"]`, not `df["tavg"]`).
+- New "Return shapes at a glance" table in SKILL.md summarising what each call returns (DataFrame vs dict, with row schemas inline).
+
 ## [0.2.1] - 2026-04-27
 
 ### Fixed
