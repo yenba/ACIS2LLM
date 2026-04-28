@@ -4,7 +4,7 @@ description: Query NOAA RCC ACIS historical weather and climate observations for
 license: MIT
 compatibility: Requires Python 3.10+, `uv` (https://docs.astral.sh/uv/), and network access to data.rcc-acis.org, geocoding.geo.census.gov, and api.zippopotam.us.
 metadata:
-  version: "0.2.3"
+  version: "0.2.4"
   upstream: https://github.com/edrewitz/xmACIS2Py
 ---
 
@@ -72,7 +72,9 @@ These are the failure modes real agents have hit. Every line below is a pattern 
 | `get_single_station_acis_data(station, variables="tmax")` | `get_single_station_acis_data(station, start_date, end_date)`. There is **no `variables=` / `variable=` parameter**. The function always returns all columns; filter the DataFrame yourself: `df[["Date", "Maximum Temperature"]]`. |
 | `df["tmax"]`, `df["tmin"]`, `df["prcp"]` | `df["Maximum Temperature"]`, `df["Minimum Temperature"]`, `df["Precipitation"]`. Returned columns are the **full English** names from the table below. Short codes (`tmax`, `tmin`, …) are only accepted by `acis2llm` composites, never by xmACIS2Py functions or the returned DataFrame. |
 | `xmacis2py.analysis.period_mean(df, variable="tmax")` | `xmacis2py.analysis.period_mean(df, parameter="Maximum Temperature")` — keyword is `parameter`, value is the full English column name. |
-| `seasonal_summary(station_ids="KLEX", season="JJA")` | `seasonal_summary(station="KLEX", season="summer")`. Param is `station` (singular). Season values are full English words: `"winter"`, `"spring"`, `"summer"`, `"fall"`/`"autumn"` — meteorological codes (`"DJF"`, `"JJA"`) are **not** accepted. |
+| `seasonal_summary(station="KLEX", parameter="tavg", season="summer")` | `seasonal_summary(station="KLEX", variable="tavg", season="summer")`. The two namespaces use different keyword names for the same concept: **`acis2llm` composites take `variable=` with a short code** (`"tavg"`, `"snow"`, …); **`xmacis2py.analysis.*` takes `parameter=` with the full English column name** (`"Average Temperature"`). Mixing them raises `TypeError: missing 1 required positional argument: 'variable'` or `unexpected keyword argument 'parameter'`. |
+| `seasonal_summary(station_ids="KLEX", season="JJA")` | `seasonal_summary(station="KLEX", variable="tavg", season="summer")`. Param is `station` (singular). Season values are full English words: `"winter"`, `"spring"`, `"summer"`, `"fall"`/`"autumn"` — meteorological codes (`"DJF"`, `"JJA"`) are **not** accepted. |
+| `xmacis2py.analysis.number_of_days_above(df, "Maximum Temperature", 90)` | `xmacis2py.analysis.number_of_days_above_value(df, "Maximum Temperature", 90)`. The actual names all end in `_value`: `number_of_days_above_value`, `number_of_days_at_or_above_value`, `number_of_days_below_value`, `number_of_days_at_or_below_value`, `number_of_days_at_value`. There is no shorter `_above` / `_below` form. |
 | `get_single_station_climate_normals(station, start_year=1991, end_year=2020)` | `get_single_station_climate_normals(station, interval="daily", start_date="1991-01-01", end_date="2020-12-31")`. Normals/departures use **date strings**, not year integers, and have an `interval` arg (`"daily"`/`"monthly"`/`"yearly"`). Only the `acis2llm` composites take `start_year`/`end_year`. |
 | `seasonal_summary(...)` returns a DataFrame; do `.loc[...]` / `.idxmax()` | Composites return a **`dict`** — `{"table": [...], "summary": str}`. Convert with `pd.DataFrame(result["table"])` before DataFrame ops. See "Return shapes at a glance" below. |
 | Counting zero-snowfall years with `(annual_snow == 0)` | Use `(annual_snow <= 0.01)`. ACIS reports trace amounts as `0.0` or near-zero values, so strict `== 0` undercounts genuinely snowless years. (For the threshold-count functions, pass the literal `value="T"` to count trace-or-above precip days.) |
@@ -86,7 +88,7 @@ If a call fails with `TypeError: unexpected keyword argument` or `KeyError`, **d
 | Names a ZIP / street address / "near X" | Call `acis2llm.find_best_station(location)` to get a station ID. Pass `result["station_id"]` to everything downstream. **City-state strings like "Denver, CO" do NOT resolve** — convert to a ZIP first, or ask the user for a ZIP/airport code. |
 | Already gives a 4-letter code (KNYC, KLAX, KDEN) | Use it directly — no lookup needed. |
 | Vague location ("the East Coast", "somewhere warm") | Ask a clarifying question. Do **not** guess. |
-| Single-period stat ("avg high in July 2024", "rainiest day in 2023") | `xmacis2py.get_single_station_acis_data(station, start_date, end_date)` then `xmacis2py.analysis.period_*` or `xmacis2py.analysis.number_of_days_*`. |
+| Single-period stat ("avg high in July 2024", "rainiest day in 2023") | `xmacis2py.get_single_station_acis_data(station, start_date, end_date)` then `xmacis2py.analysis.period_*` (e.g. `period_mean`, `period_sum`, `period_percentile`) or `xmacis2py.analysis.number_of_days_{above,at_or_above,below,at_or_below,at}_value` (note the trailing `_value`). |
 | Cross-year question ("hottest July ever", "snowiest winter on record", "% of years that freeze") | Use an `acis2llm` composite — `monthly_totals_by_year`, `seasonal_summary`, `frequency_of_occurrence`. These fetch the multi-decade window and aggregate in one call. |
 | Multiple stations ("compare NYC to Boston to Chicago") | `acis2llm.fetch_stations("KNYC,KBOS,KORD", ...)` — the comma form returns one DataFrame with a `station` column. |
 | Long record needed for a small station ("data going back as far as possible for downtown LA") | `find_best_station` may return a `+`-joined `station_id` (e.g. `"KCQT+OLD_LA"`) that backfills automatically — just pass it to `fetch_stations` unchanged. |
@@ -118,10 +120,12 @@ For trace precipitation, the threshold-count functions accept the literal `value
 | Call | Returns |
 |---|---|
 | `xmacis2py.get_single_station_acis_data(...)` | `pandas.DataFrame` — columns are the **Full** names from the table above (e.g. `"Average Temperature"`, `"Maximum Temperature"`), plus a `"Date"` column. Not snake_case. |
+| `xmacis2py.get_single_station_climate_normals(...)` / `get_single_station_departures(...)` | `pandas.DataFrame` (NOT a dict) — same Full column names as observations. The `acis2llm` dict shape only applies to the `acis2llm.*` composites. |
+| `xmacis2py.single_station_meta(...)` / `multi_station_meta(...)` | `pandas.DataFrame` — metadata about the station (note `"Station Name"` column, not `"name"`). Distinct from `acis2llm.find_best_station`, which returns a **dict** (`result["station_id"]`, `result["station_name"]`, …). |
 | `acis2llm.fetch_stations(...)` | `pandas.DataFrame` — same columns plus a `station` column. |
 | `acis2llm.seasonal_summary(...)` / `monthly_totals_by_year(...)` | `dict` — `{"table": [{"year", "value", "missing_days"}, ...], "summary": str}` |
-| `acis2llm.frequency_of_occurrence(...)` / `monthly_threshold_counts(...)` | `dict` — adds `count`, `total_years`, `percentage`; `table` rows have `days_met`, `mean_value`, `extreme_value`, `met_condition`. |
-| `xmacis2py.analysis.<func>(df, "Full Column Name", ...)` | scalar or list — see `references/xmacis2py-analysis.md`. |
+| `acis2llm.frequency_of_occurrence(...)` / `monthly_threshold_counts(...)` | `dict` — adds `count`, `total_years`, `percentage`. **Per-row keys**: `year` (int), `days_met` (int — *the count of days the threshold was met*), `mean_value` (float — average of the variable that year), `extreme_value` (float — most extreme **observed value** that year, e.g. coldest temp; **not** a day count), `value` (float — same as `extreme_value`), `met_condition` (bool — was the threshold met at least once). To find the worst year, sort by `days_met`, not `extreme_value`. |
+| `xmacis2py.analysis.<func>(df, "Full Column Name", ...)` | scalar or list — `period_*` and `number_of_days_*` return a single number (sum, mean, count, etc.). `period_rankings` returns a list. See `references/xmacis2py-analysis.md`. |
 
 ## Multi-station spec syntax
 

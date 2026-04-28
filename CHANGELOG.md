@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.4] - 2026-04-28
+
+### Changed
+- SKILL.md gotchas table grew two rows from a third field report (Crush + Qwen3.6 35B running 10 Lexington KY queries):
+  - `acis2llm` composites take `variable=` with a **short code** (`"tavg"`, `"snow"`); `xmacis2py.analysis.*` takes `parameter=` with the **full English column name** (`"Average Temperature"`). Two namespaces, two keyword names — agents conflate them and get `TypeError: missing 1 required positional argument: 'variable'` or `unexpected keyword argument 'parameter'`.
+  - `xmacis2py.analysis.number_of_days_above` does **not** exist; the actual names all end in `_value` (`number_of_days_above_value`, `number_of_days_at_or_above_value`, etc.). The decision tree's old `number_of_days_*` wildcard invited the truncation.
+- "Return shapes at a glance" gained three rows: `get_single_station_climate_normals` / `get_single_station_departures` return `DataFrame` (not the `acis2llm`-style dict); `single_station_meta` / `multi_station_meta` return `DataFrame` with a `"Station Name"` column (distinct from `find_best_station`'s dict).
+- The `frequency_of_occurrence` row in the same table now spells out every per-row key: `days_met` is the **count**, `extreme_value` is the most-extreme **observed value** (e.g. coldest temp), and `value` mirrors `extreme_value`. Agents have read `extreme_value=25.0` as "25 days" — clarified to "sort by `days_met`, not `extreme_value`".
+
 ## [0.2.3] - 2026-04-28
 
 ### Changed
