@@ -359,7 +359,7 @@ async def run_batch(batch_size=5):
         prior_queries=prior_str,
     )
 
-    gen_result = completion(gen_prompt, schema={
+    gen_result = completion(gen_prompt, model="slow", schema={
         "type": "object",
         "properties": {
             "queries": {
@@ -408,7 +408,7 @@ async def run_batch(batch_size=5):
                 difficulty=tr["query_obj"]["expected_difficulty"],
                 agent_output=tr["output"][:8000],  # cap for context
             )
-            return completion(prompt, schema=REVIEW_SCHEMA)
+            return completion(prompt, model="slow", schema=REVIEW_SCHEMA)
         return reviewer
 
     reviews = parallel([make_reviewer(tr) for tr in test_results])
