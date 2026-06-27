@@ -359,28 +359,39 @@ async def run_batch(batch_size=5):
         prior_queries=prior_str,
     )
 
-    gen_result = completion(gen_prompt, model="slow", schema={
-        "type": "object",
-        "properties": {
-            "queries": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string"},
-                        "category": {"type": "string"},
-                        "expected_difficulty": {
-                            "type": "string",
-                            "enum": ["easy", "medium", "hard"],
+    # Generate queries with retry
+    queries = None
+    for attempt in range(3):
+        try:
+            gen_result = completion(gen_prompt, model="slow", schema={
+                "type": "object",
+                "properties": {
+                    "queries": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string"},
+                                "category": {"type": "string"},
+                                "expected_difficulty": {
+                                    "type": "string",
+                                    "enum": ["easy", "medium", "hard"],
+                                },
+                            },
+                            "required": ["query", "category", "expected_difficulty"],
                         },
                     },
-                    "required": ["query", "category", "expected_difficulty"],
                 },
-            },
-        },
-        "required": ["queries"],
-    })
-    queries = gen_result["queries"]
+                "required": ["queries"],
+            })
+            queries = gen_result["queries"]
+            if not queries:
+                raise ValueError("Model returned empty queries list")
+            break
+        except Exception as e:
+            log(f"  Query generation attempt {attempt+1} failed: {e}")
+            if attempt == 2:
+                raise RuntimeError(f"Query generation failed after 3 attempts") from e
 
     for q in queries:
         log(f"  [{q['expected_difficulty']}] {q['query'][:70]}")
@@ -478,12 +489,17 @@ async def run_batch(batch_size=5):
 
 
 async def run_loop(batches=3, batch_size=5):
-    """Run multiple batches continuously."""
+    """Run multiple batches continuously. Survives individual batch failures."""
     all_results = []
+    failed_batches = []
     for i in range(batches):
-        log(f"Starting batch {i+1} of {batches}")
-        results = await run_batch(batch_size=batch_size)
-        all_results.extend(results)
+        print(f"Starting batch {i+1} of {batches}")
+        try:
+            results = await run_batch(batch_size=batch_size)
+            all_results.extend(results)
+        except Exception as e:
+            print(f"  ✗ Batch {i+1} FAILED: {e}")
+            failed_batches.append({"batch": i+1, "error": str(e)})
 
     # Final summary
     total = len(all_results)
@@ -498,7 +514,13 @@ async def run_loop(batches=3, batch_size=5):
     print(f"Total queries:   {total}")
     print(f"Clean:           {clean}")
     print(f"With issues:     {total - clean}")
+    print(f"Failed batches:  {len(failed_batches)}")
     print(f"Unique issues:   {len(set(i['title'].lower() for i in all_issues))}")
     print(f"{'='*60}")
+
+    if failed_batches:
+        print(f"\nFailed batches:")
+        for fb in failed_batches:
+            print(f"  Batch {fb['batch']}: {fb['error'][:100]}")
 
     return all_results
