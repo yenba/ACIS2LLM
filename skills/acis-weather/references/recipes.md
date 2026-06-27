@@ -206,3 +206,118 @@ for entry in result["top_n"]:
 ```
 
 Why this matters: "is this a record for this date" is a different question from "is this the highest ever" (which `period_rankings` answers). Calendar-date records compare the same day across years, controlling for seasonality.
+
+---
+
+## 9. "Compare snowfall at two stations for a winter season"
+
+```python
+import xmacis2py
+from xmacis2py import analysis
+
+# Step 1: Fetch data for each station separately
+df_ord = xmacis2py.get_single_station_acis_data(
+    "KORD", start_date="2020-12-01", end_date="2021-02-28")
+df_msp = xmacis2py.get_single_station_acis_data(
+    "KMSP", start_date="2020-12-01", end_date="2021-02-28")
+
+# Step 2: Sum snowfall for each station
+total_ord = analysis.period_sum(df_ord, "Snowfall")
+total_msp = analysis.period_sum(df_msp, "Snowfall")
+
+print(f"KORD: {total_ord:.1f} in")
+print(f"KMSP: {total_msp:.1f} in")
+print(f"Difference: {abs(total_ord - total_msp):.1f} in")
+```
+
+Why separate fetches: `fetch_stations("KORD,KMSP", ...)` returns one combined DataFrame with a `station` column — useful for side-by-side daily comparison, but for simple aggregation (sum, mean), fetching each station separately is clearer. Never use `fetch_stations` alone and expect weather data — it's a convenience wrapper, not a replacement for `get_single_station_acis_data`.
+
+---
+
+## 10. "How much did temperature depart from normal?"
+
+```python
+import xmacis2py
+
+# Option 1: Use the departures API directly
+# (returns observed-minus-normal as signed deltas)
+departures = xmacis2py.get_single_station_departures(
+    "KSEA",
+    interval="monthly",
+    start_date="2021-08-01",
+    end_date="2021-08-31",
+)
+# Column "Average Temperature Departure" has the delta in °F
+# Positive = warmer than normal; negative = colder
+print(departures[["Date", "Average Temperature Departure"]])
+
+# Option 2: Fetch observations and normals separately, then subtract
+obs = xmacis2py.get_single_station_acis_data("KSEA", start_date="2021-08-01", end_date="2021-08-31")
+normals = xmacis2py.get_single_station_climate_normals("KSEA", interval="monthly",
+    start_date="2021-08-01", end_date="2021-08-31")
+# Note: normals columns are "Average Temperature", "Max Temperature", etc. — NO " Normal" suffix
+```
+
+Why `get_single_station_departures` over normals: The departures API gives you the signed delta directly — no need to fetch normals and subtract manually. Use `interval="monthly"` for monthly departures, `"daily"` for daily. The column name is `"Average Temperature Departure"` (same as the observation column naming convention).
+
+---
+
+## 11. "Wettest/hottest/snowiest X ever" (cross-year ranking)
+
+```python
+import acis2llm
+
+# Wettest summer on record for Miami:
+result = acis2llm.seasonal_summary(
+    station="KMIA",
+    parameter="prcp",           # keyword is parameter=, NOT variable=
+    season="summer",
+    aggregation="sum",
+)
+
+# Sort by value descending to find extremes
+ranked = sorted(result["table"], key=lambda r: r["value"] or 0, reverse=True)
+print("Top 5 wettest summers:")
+for row in ranked[:5]:
+    print(f"  Summer {row['year']}: {row['value']:.1f} in")
+
+# For monthly extremes (e.g., snowiest January):
+result = acis2llm.monthly_totals_by_year(
+    station="KBUR",
+    parameter="snow",           # keyword is parameter=
+    month="january",
+    aggregation="sum",
+)
+ranked = sorted(result["table"], key=lambda r: r["value"] or 0, reverse=True)
+```
+
+Why `seasonal_summary` not `monthly_totals_by_year`: Summers span June–August (one meteorological season), so `seasonal_summary` is the right tool. Use `monthly_totals_by_year` when the question targets a single calendar month. Both return `{"table": [{"year", "value", "missing_days"}, ...], "summary": str}` — sort by `"value"` to rank.
+
+---
+
+## 12. "Heating degree days for a month"
+
+```python
+import xmacis2py
+from xmacis2py import analysis
+
+# Fetch daily data for Minneapolis, January 1996
+df = xmacis2py.get_single_station_acis_data(
+    "KMSP",
+    start_date="1996-01-01",
+    end_date="1996-01-31",
+)
+
+# Sum heating degree days for the month
+hdd = analysis.period_sum(df, "Heating Degree Days")
+print(f"KMSP January 1996: {hdd} HDD")
+
+# Compare two months
+df2 = xmacis2py.get_single_station_acis_data(
+    "KMSP", start_date="2019-01-01", end_date="2019-01-31")
+hdd2 = analysis.period_sum(df2, "Heating Degree Days")
+print(f"KMSP January 2019: {hdd2} HDD")
+print(f"Difference: {hdd - hdd2} HDD")
+```
+
+Why fetch-then-analyze: Degree days (HDD, CDD, GDD) are daily observations in the ACIS DataFrame — there's no composite function for them. Fetch the date range, then use `analysis.period_sum()` for total, `analysis.period_mean()` for average. The column name is the full English name: `"Heating Degree Days"`, `"Cooling Degree Days"`, `"Growing Degree Days"`.
