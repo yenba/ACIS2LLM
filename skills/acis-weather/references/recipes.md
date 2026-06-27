@@ -321,3 +321,46 @@ print(f"Difference: {hdd - hdd2} HDD")
 ```
 
 Why fetch-then-analyze: Degree days (HDD, CDD, GDD) are daily observations in the ACIS DataFrame — there's no composite function for them. Fetch the date range, then use `analysis.period_sum()` for total, `analysis.period_mean()` for average. The column name is the full English name: `"Heating Degree Days"`, `"Cooling Degree Days"`, `"Growing Degree Days"`.
+
+---
+
+## 13. "How many days had snow depth over 1 inch?" (Snow depth & threshold counts)
+
+```python
+import acis2llm
+
+result = acis2llm.monthly_threshold_counts(
+    station="KDEN",
+    parameter="snow_depth",     # "snwd" or "Snow Depth"
+    threshold=1.0,
+    comparison=">=",
+    month=12,                   # e.g., in December
+)
+
+# Return format is similar to frequency_of_occurrence but designed for raw counts
+print(f"Average of {result['percentage']}% of Decembers have at least one day with >1 inch snow on the ground.")
+```
+
+Why `monthly_threshold_counts`: It works identically to `frequency_of_occurrence` but is clearer for queries specifically asking for 'how many days' rather than 'how often the condition is met'. Snow depth (`snow_depth`) is distinct from snowfall (`snow`).
+
+---
+
+## 14. "Calculate Growing Degree Days (GDD)"
+
+```python
+import xmacis2py
+from xmacis2py import analysis
+
+# Fetch daily data for a specific period
+df = xmacis2py.get_single_station_acis_data(
+    "KDSM", # Des Moines, IA
+    start_date="2023-05-01",
+    end_date="2023-09-30",
+)
+
+# Sum growing degree days for the season
+gdd = analysis.period_sum(df, "Growing Degree Days")
+print(f"Total GDD (base 50F) for Summer 2023: {gdd}")
+```
+
+Why fetch-then-analyze: GDD (like HDD and CDD) requires fetching the data first and then using the `analysis` functions on the exact column `"Growing Degree Days"`.
