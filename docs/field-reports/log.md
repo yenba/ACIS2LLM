@@ -24,3 +24,6 @@ When a finding gets promoted into a spec/plan/fix, **rename** the linked report 
 - 2026-06-27 — query: "stress-test batch 1 (5 queries, 4 with issues)" — issues: see 2026-06-27-stress-test-1.md
 - 2026-06-27 — query: "stress-test batch 2 (5 queries, 5 with issues)" — issues: see 2026-06-27-stress-test-2.md
 - 2026-06-27 — query: "stress-test batch 1 (5 queries, 5 with issues)" — issues: see 2026-06-27-stress-test-1.md
+- 2026-06-27 — query: "stress-test batch 1 (5 queries, 3 with issues)" — issues: see 2026-06-27-stress-test-1.md
+- 2026-06-27 — query: "stress-test batch 2 (5 queries, 4 with issues)" — issues: see 2026-06-27-stress-test-2.md
+- 2026-06-27 — query: "stress-test batch 3 (5 queries, 4 with issues)" — issues: see 2026-06-27-stress-test-3.md
