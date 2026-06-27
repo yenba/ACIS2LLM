@@ -147,3 +147,62 @@ plt.savefig("knyc-2024.png")
 
 If the user specifically asks for the upstream plotting style, see the
 xmACIS2Py [`plot_*` documentation](https://github.com/edrewitz/xmACIS2Py/tree/main/Documentation/xmACIS2.0).
+
+
+---
+
+## 8. "Is this a record for this calendar date?"
+
+Two approaches: the manual pattern (works now) and the helper (after `calendar_date_records` ships).
+
+### Manual pattern
+
+```python
+import xmacis2py
+import pandas as pd
+import acis2llm
+
+# Fetch the full record for KLEX (Lexington, KY)
+df = acis2llm.fetch_stations(
+    "KLEX",
+    start_date="1898-01-01",
+    end_date="2026-06-27",
+)
+df["Date"] = pd.to_datetime(df["Date"])
+df["Precipitation"] = pd.to_numeric(df["Precipitation"], errors="coerce")
+
+# Filter to June 9 across all years
+june9 = df[(df["Date"].dt.month == 6) & (df["Date"].dt.day == 9)].copy()
+june9 = june9.dropna(subset=["Precipitation"])
+june9 = june9.sort_values("Precipitation", ascending=False)
+june9["rank"] = range(1, len(june9) + 1)
+
+print(f"June 9 precipitation record for KLEX ({len(june9)} years):")
+print(june9[["Date", "Precipitation", "rank"]].head(5).to_string(index=False))
+```
+
+Note the parenthesized conditions in the filter — `&` binds tighter than `==` in Python.
+
+### Using the helper
+
+```python
+import acis2llm
+
+result = acis2llm.calendar_date_records(
+    station="KLEX",
+    month=6,
+    day=9,
+    parameter="prcp",
+)
+
+if result["is_record"]:
+    print(f"NEW RECORD! {result['current_value']}\" on June 9")
+else:
+    print(f"Ranks #{result['current_rank']} of {result['total_years']} years")
+
+print("Top 5:")
+for entry in result["top_n"]:
+    print(f"  #{entry['rank']}: {entry['year']} — {entry['value']}\"")
+```
+
+Why this matters: "is this a record for this date" is a different question from "is this the highest ever" (which `period_rankings` answers). Calendar-date records compare the same day across years, controlling for seasonality.

@@ -150,6 +150,41 @@ Returned dict adds `count` (years where it happened at all), `total_years`, and 
 
 Same signature and return shape as `frequency_of_occurrence` — a thin alias emphasizing the per-year `days_met` counts in `table`. **Despite the name it does not iterate every month**: you must still pass exactly one of `month` or `season`. To compare counts across all twelve months, call this once per month and assemble the results yourself.
 
+### `calendar_date_records(station, month, day, parameter, ...)`
+
+```python
+acis2llm.calendar_date_records(
+    station,                    # str — accepts the same specs as fetch_stations
+    month,                      # int 1-12
+    day,                        # int 1-31
+    parameter,                  # short code or full xmACIS2Py column name
+    n=5,                        # number of top entries to return
+    start_year=None,            # default: station's earliest year on record
+    end_year=None,              # default: current year
+)
+```
+
+Rank a specific calendar date (e.g. June 9) across all years on record. Fetches the station's full record, filters to the matching month+day, and ranks by the parameter value.
+
+Handles Feb 29 naturally — non-leap years simply have no matching rows.
+
+Returns:
+
+```python
+{
+    'current_year': int,
+    'current_value': float | None,    # this year's value, or None if not yet observed
+    'current_rank': int | None,       # 1 = highest; None if no current data
+    'is_record': bool,                # True if current_rank == 1
+    'top_n': [
+        {'rank': 1, 'year': int, 'value': float},
+        ...
+    ],
+    'total_years': int,               # years with non-null data for this date
+    'summary': str,                   # one-line headline
+}
+```
+
 ---
 
 ## Constants
