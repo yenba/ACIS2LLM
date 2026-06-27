@@ -10,10 +10,22 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from xmacis2py import get_single_station_acis_data
+
 
 from acis2llm.geocoding import get_station_start_year
 from acis2llm.multi_station import fetch_stations
+import functools
+
+def _handle_variable_alias(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        if 'variable' in kwargs:
+            if 'parameter' in kwargs:
+                raise TypeError("got multiple values for argument 'parameter'")
+            kwargs['parameter'] = kwargs.pop('variable')
+        return func(*args, **kwargs)
+    return wrapper
+
 
 
 VARIABLE_COLUMN_MAP = {
@@ -283,6 +295,7 @@ def _resolve_year_window(station, start_year, end_year):
     return first, last
 
 
+@_handle_variable_alias
 def frequency_of_occurrence(station, parameter, threshold, comparison,
                              month=None, season=None, start_year=None, end_year=None):
     """How often (across years) a daily threshold is met in a given month or season.
@@ -323,7 +336,7 @@ def frequency_of_occurrence(station, parameter, threshold, comparison,
         last_day = calendar.monthrange(last_year, month_num)[1]
         start_date = f"{first_year}-{month_num:02d}-01"
         end_date = f"{last_year}-{month_num:02d}-{last_day:02d}"
-        df = get_single_station_acis_data(station, start_date=start_date, end_date=end_date)
+        df = fetch_stations(station, start_date=start_date, end_date=end_date)
         return _calculate_frequency(df, column, threshold, comparison,
                                      month=month_num,
                                      start_year=start_year, end_year=end_year)
@@ -340,12 +353,13 @@ def frequency_of_occurrence(station, parameter, threshold, comparison,
         start_date = f"{first_year}-{first_month:02d}-01"
         end_date = f"{last_year}-{last_month:02d}-{last_day:02d}"
 
-    df = get_single_station_acis_data(station, start_date=start_date, end_date=end_date)
+    df = fetch_stations(station, start_date=start_date, end_date=end_date)
     return _calculate_frequency(df, column, threshold, comparison,
                                  season=season,
                                  start_year=start_year, end_year=end_year)
 
 
+@_handle_variable_alias
 def seasonal_summary(station, parameter, season, start_year=None, end_year=None,
                       aggregation="sum"):
     """Aggregate a variable across a meteorological season, year by year.
@@ -374,12 +388,13 @@ def seasonal_summary(station, parameter, season, start_year=None, end_year=None,
         start_date = f"{first_year}-{first_month:02d}-01"
         end_date = f"{last_year}-{last_month:02d}-{last_day:02d}"
 
-    df = get_single_station_acis_data(station, start_date=start_date, end_date=end_date)
+    df = fetch_stations(station, start_date=start_date, end_date=end_date)
     return _aggregate_seasonal_by_year(df, column, season_months,
                                         aggregation=aggregation,
                                         start_year=start_year, end_year=end_year)
 
 
+@_handle_variable_alias
 def monthly_totals_by_year(station, parameter, month, start_year=None, end_year=None,
                             aggregation="sum"):
     """Aggregate a variable for one calendar month across many years.
@@ -400,12 +415,13 @@ def monthly_totals_by_year(station, parameter, month, start_year=None, end_year=
     start_date = f"{first_year}-{month_num:02d}-01"
     end_date = f"{last_year}-{month_num:02d}-{last_day:02d}"
 
-    df = get_single_station_acis_data(station, start_date=start_date, end_date=end_date)
+    df = fetch_stations(station, start_date=start_date, end_date=end_date)
     return _aggregate_monthly_by_year(df, column, month_num,
                                        aggregation=aggregation,
                                        start_year=start_year, end_year=end_year)
 
 
+@_handle_variable_alias
 def monthly_threshold_counts(station, parameter, threshold, comparison,
                               month=None, season=None, start_year=None, end_year=None):
     """Per-year count of days meeting a threshold in a single month or season.
@@ -423,6 +439,7 @@ def monthly_threshold_counts(station, parameter, threshold, comparison,
                                     start_year=start_year, end_year=end_year)
 
 
+@_handle_variable_alias
 def calendar_date_records(
     station: str,
     month: int,
