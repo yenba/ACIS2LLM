@@ -77,6 +77,8 @@ These are the failure modes real agents have hit. Every line below is a pattern 
 | `get_single_station_climate_normals(station, start_year=1991, end_year=2020)` | `get_single_station_climate_normals(station, interval="daily", start_date="1991-01-01", end_date="2020-12-31")`. Normals/departures use **date strings**, not year integers, and have an `interval` arg (`"daily"`/`"monthly"`/`"yearly"`). Only the `acis2llm` composites take `start_year`/`end_year`. |
 | `seasonal_summary(...)` returns a DataFrame; do `.loc[...]` / `.idxmax()` | Composites return a **`dict`** — `{"table": [...], "summary": str}`. Convert with `pd.DataFrame(result["table"])` before DataFrame ops. See "Return shapes at a glance" below. |
 | Counting zero-snowfall years with `(annual_snow == 0)` | Use `(annual_snow <= 0.01)`. ACIS reports trace amounts as `0.0` or near-zero values, so strict `== 0` undercounts genuinely snowless years. (For the threshold-count functions, pass the literal `value="T"` to count trace-or-above precip days.) |
+| `df[df['Month'] == 6 & df['Day'] == 9]` | `df[(df['Month'] == 6) & (df['Day'] == 9)]`. Always wrap each condition in parentheses when using `&`/`|` in DataFrame filters — `&` binds tighter than `==` in Python, so without parens the expression evaluates `6 & df['Day']` first, raising `ValueError: The truth value of a Series is ambiguous`. |
+| `get_single_station_climate_normals(station, interval="monthly")` returned fewer than 12 months | Pass explicit `start_date`/`end_date` covering at least one full year: `start_date="2020-01-01", end_date="2020-12-31"`. The default `end_date` is yesterday and may clip results if `start_date` is not also set to span a full year. For custom climatologies (e.g. a 50-year window) or calendar-date normals, use `xmacis2py.analysis.calculate_daily_normals(station, df=df)` instead — it computes normals from a DataFrame without upstream smoothing. |
 
 If a call fails with `TypeError: unexpected keyword argument` or `KeyError`, **don't guess** — check this table or run `inspect.signature(fn)`.
 
@@ -93,6 +95,7 @@ If a call fails with `TypeError: unexpected keyword argument` or `KeyError`, **d
 | Long record needed for a small station ("data going back as far as possible for downtown LA") | `find_best_station` may return a `+`-joined `station_id` (e.g. `"KCQT+OLD_LA"`) that backfills automatically — just pass it to `fetch_stations` unchanged. |
 | 30-year normals ("what's normal for X") | `xmacis2py.get_single_station_climate_normals(station, ...)` — distinct from observations. |
 | Departure-from-normal ("how much warmer than normal?") | `xmacis2py.get_single_station_departures(station, ...)`. |
+| Custom or calendar-date normals ("average for June 9 across 30 years") | `xmacis2py.analysis.calculate_daily_normals(station, df=df)` — computes normals from a DataFrame without upstream smoothing, useful for custom windows. Pair with `calendar_date_records` for same-day-across-years ranking. |
 
 ## Variable codes
 

@@ -12,6 +12,7 @@ from acis2llm.composites import (
     _calculate_frequency,
     _get_season_months,
     _parse_month,
+    calendar_date_records,
 )
 from acis2llm.geocoding import find_best_station, geocode_census, is_zip_code
 
@@ -414,3 +415,115 @@ class TestFindBestStationWaterfall:
         assert result["station_id"] == "KLAX"
         assert "AMUNDSEN" not in result.get("name", "")
         assert "LOS ANGELES" in result["name"]
+
+
+# ---------------------------------------------------------------------------
+# calendar_date_records
+# ---------------------------------------------------------------------------
+
+def _patch_fetch(monkeypatch, nyc_df):
+    """Patch network calls so calendar_date_records uses the CSV fixture."""
+    monkeypatch.setattr(
+        "acis2llm.composites.fetch_stations", lambda *a, **kw: nyc_df.copy()
+    )
+    monkeypatch.setattr(
+        "acis2llm.composites._resolve_year_window", lambda *a, **kw: (1990, 2025)
+    )
+
+
+class TestCalendarDateRecords:
+    def test_basic_return_shape(self, monkeypatch, nyc_df):
+        _patch_fetch(monkeypatch, nyc_df)
+        result = calendar_date_records("KNYC", 7, 4, "tmax")
+        expected_keys = {
+            "current_year",
+            "current_value",
+            "current_rank",
+            "is_record",
+            "top_n",
+            "total_years",
+            "summary",
+        }
+        assert set(result.keys()) == expected_keys
+        assert isinstance(result["current_year"], int)
+        assert isinstance(result["top_n"], list)
+        assert isinstance(result["total_years"], int)
+        assert isinstance(result["summary"], str)
+        assert isinstance(result["is_record"], bool)
+
+    def test_top_n_ordering(self, monkeypatch, nyc_df):
+        _patch_fetch(monkeypatch, nyc_df)
+        result = calendar_date_records("KNYC", 7, 4, "tmax")
+        top = result["top_n"]
+        assert len(top) > 0
+        for entry in top:
+            assert "rank" in entry
+            assert "year" in entry
+            assert "value" in entry
+        values = [e["value"] for e in top]
+        assert values == sorted(values, reverse=True)
+
+    def test_top_n_length(self, monkeypatch, nyc_df):
+        _patch_fetch(monkeypatch, nyc_df)
+        result = calendar_date_records("KNYC", 7, 4, "tmax")
+        assert len(result["top_n"]) <= 5
+
+    def test_custom_n(self, monkeypatch, nyc_df):
+        _patch_fetch(monkeypatch, nyc_df)
+        result = calendar_date_records("KNYC", 7, 4, "tmax", n=3)
+        assert len(result["top_n"]) <= 3
+
+    def test_feb_29_leap_year(self, monkeypatch, nyc_df):
+        _patch_fetch(monkeypatch, nyc_df)
+        result = calendar_date_records("KNYC", 2, 29, "tmax")
+        # Only leap years should have data for Feb 29
+        total_years_in_data = nyc_df["Date"].dt.year.nunique()
+        assert result["total_years"] < total_years_in_data
+        assert result["total_years"] > 0  # some leap years exist in 1990-2025
+
+    def test_no_data_date(self, monkeypatch, nyc_df):
+        _patch_fetch(monkeypatch, nyc_df)
+        result = calendar_date_records("KNYC", 2, 30, "tmax")
+        assert result["current_value"] is None
+        assert result["current_rank"] is None
+        assert result["is_record"] is False
+        assert result["top_n"] == []
+        assert result["total_years"] == 0
+
+    def test_short_code_parameter(self, monkeypatch, nyc_df):
+        _patch_fetch(monkeypatch, nyc_df)
+        result = calendar_date_records("KNYC", 7, 4, "prcp")
+        assert result["total_years"] > 0
+        assert "Precipitation" in result["summary"]
+
+
+# ---------------------------------------------------------------------------
+# _aggregate_monthly_by_year partial flag
+# ---------------------------------------------------------------------------
+
+class TestPartialMonthFlag:
+    def test_partial_flag_exists(self, nyc_df):
+        result = _aggregate_monthly_by_year(nyc_df, "Precipitation", 6)
+        for row in result["table"]:
+            assert "partial" in row
+            assert isinstance(row["partial"], bool)
+
+    def test_complete_month_not_partial(self, nyc_df):
+        result = _aggregate_monthly_by_year(nyc_df, "Precipitation", 6)
+        # June 1995 should be a complete month in historical data
+        row_1995 = [r for r in result["table"] if r["year"] == 1995]
+        assert len(row_1995) == 1
+        assert row_1995[0]["partial"] is False
+
+    def test_partial_month_detected(self, nyc_df):
+        # Create a df missing some days in January 2000
+        df = nyc_df.copy()
+        df["Date"] = pd.to_datetime(df["Date"])
+        jan_2000 = (df["Date"].dt.year == 2000) & (df["Date"].dt.month == 1)
+        # Keep only the first 10 days of Jan 2000
+        drop_mask = jan_2000 & (df["Date"].dt.day > 10)
+        df = df[~drop_mask].copy()
+        result = _aggregate_monthly_by_year(df, "Precipitation", 1)
+        row_2000 = [r for r in result["table"] if r["year"] == 2000]
+        assert len(row_2000) == 1
+        assert row_2000[0]["partial"] is True

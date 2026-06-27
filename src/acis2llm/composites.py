@@ -13,6 +13,7 @@ import pandas as pd
 from xmacis2py import get_single_station_acis_data
 
 from acis2llm.geocoding import get_station_start_year
+from acis2llm.multi_station import fetch_stations
 
 
 VARIABLE_COLUMN_MAP = {
@@ -99,6 +100,7 @@ def _aggregate_monthly_by_year(df, column, month, aggregation="sum",
     grouped = filtered.groupby("_year").agg(
         value=(column, agg_func),
         missing_days=(column, lambda x: x.isna().sum()),
+        obs_count=(column, "count"),
     ).reset_index()
 
     table = []
@@ -108,6 +110,7 @@ def _aggregate_monthly_by_year(df, column, month, aggregation="sum",
             "year": int(row["_year"]),
             "value": round(float(val), 2) if pd.notna(val) else None,
             "missing_days": int(row["missing_days"]),
+            "partial": int(row["obs_count"]) < calendar.monthrange(int(row["_year"]), month)[1],
         })
 
     month_name = calendar.month_name[month]
@@ -407,3 +410,142 @@ def monthly_threshold_counts(station, parameter, threshold, comparison,
     return frequency_of_occurrence(station, parameter, threshold, comparison,
                                     month=month, season=season,
                                     start_year=start_year, end_year=end_year)
+
+
+def calendar_date_records(
+    station: str,
+    month: int,
+    day: int,
+    parameter: str,
+    n: int = 5,
+    start_year: int | None = None,
+    end_year: int | None = None,
+) -> dict:
+    """Rank historical values for a specific calendar date across all years.
+
+    For example, find the hottest July 4th on record, or see where this year's
+    precipitation ranks for a given date.
+
+    Parameters
+    ----------
+    station : str
+        Station identifier (e.g. ``"KNYC"``).
+    month : int
+        Calendar month (1–12).
+    day : int
+        Calendar day of month.
+    parameter : str
+        Short code (e.g. ``"tmax"``) or full column name
+        (e.g. ``"Maximum Temperature"``).
+    n : int, optional
+        Number of top records to return, by default 5.
+    start_year : int or None, optional
+        First year to include. Defaults to the station's start year.
+    end_year : int or None, optional
+        Last year to include. Defaults to the current year.
+
+    Returns
+    -------
+    dict
+        ``current_year`` : int
+            This calendar year.
+        ``current_value`` : float or None
+            This year's value, or ``None`` if no data yet.
+        ``current_rank`` : int or None
+            Rank where 1 = highest. ``None`` if no current data.
+        ``is_record`` : bool
+            ``True`` if ``current_rank == 1``.
+        ``top_n`` : list of dict
+            Top *n* years, each with ``rank``, ``year``, ``value``.
+        ``total_years`` : int
+            Years with non-null data for this date.
+        ``summary`` : str
+            Human-readable summary sentence.
+    """
+    column = VARIABLE_COLUMN_MAP.get(parameter.lower(), parameter)
+    first_year, last_year = _resolve_year_window(station, start_year, end_year)
+
+    df = fetch_stations(
+        station,
+        start_date=f"{first_year}-01-01",
+        end_date=f"{last_year}-12-31",
+    )
+
+    df["Date"] = pd.to_datetime(df["Date"])
+    df["_month"] = df["Date"].dt.month
+    df["_day"] = df["Date"].dt.day
+    filtered = df[(df["_month"] == month) & (df["_day"] == day)].copy()
+
+    current_year = pd.Timestamp.now().year
+    month_name = calendar.month_name[month]
+    date_label = f"{month_name} {day}"
+
+    if filtered.empty:
+        return {
+            "current_year": current_year,
+            "current_value": None,
+            "current_rank": None,
+            "is_record": False,
+            "top_n": [],
+            "total_years": 0,
+            "summary": f"No data for {date_label} {column}.",
+        }
+
+    filtered[column] = pd.to_numeric(filtered[column], errors="coerce")
+    filtered = filtered.dropna(subset=[column])
+    filtered["_year"] = filtered["Date"].dt.year
+
+    if filtered.empty:
+        return {
+            "current_year": current_year,
+            "current_value": None,
+            "current_rank": None,
+            "is_record": False,
+            "top_n": [],
+            "total_years": 0,
+            "summary": f"No data for {date_label} {column}.",
+        }
+
+    ranked = filtered.sort_values(column, ascending=False).reset_index(drop=True)
+    ranked["_rank"] = range(1, len(ranked) + 1)
+    total_years = len(ranked)
+
+    # Current year lookup
+    cur_row = ranked[ranked["_year"] == current_year]
+    if cur_row.empty:
+        current_value = None
+        current_rank = None
+        is_record = False
+    else:
+        current_value = round(float(cur_row.iloc[0][column]), 2)
+        current_rank = int(cur_row.iloc[0]["_rank"])
+        is_record = current_rank == 1
+
+    top_n = []
+    for _, row in ranked.head(n).iterrows():
+        top_n.append({
+            "rank": int(row["_rank"]),
+            "year": int(row["_year"]),
+            "value": round(float(row[column]), 2),
+        })
+
+    if current_value is not None:
+        summary = (
+            f"{date_label} {column}: {current_year} value {current_value} "
+            f"ranks #{current_rank} of {total_years} years"
+        )
+    else:
+        summary = (
+            f"{date_label} {column}: no {current_year} data yet, "
+            f"{total_years} years on record"
+        )
+
+    return {
+        "current_year": current_year,
+        "current_value": current_value,
+        "current_rank": current_rank,
+        "is_record": is_record,
+        "top_n": top_n,
+        "total_years": total_years,
+        "summary": summary,
+    }
