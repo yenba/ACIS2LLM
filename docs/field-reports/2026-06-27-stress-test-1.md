@@ -11,190 +11,175 @@
 
 | # | Query | Category | Difficulty | Status | Answer Quality |
 |---|-------|----------|------------|--------|----------------|
-| 1 | What was the average high temperature in Denver during July ... | single-period stat | easy | error_recovered | correct |
-| 2 | Has Fairbanks, Alaska ever gotten snow in June? How often do... | frequency of occurrence | medium | error_recovered | correct |
-| 3 | I'm curious — which winter dumped the most snow on Buffalo, ... | snowfall or winter-specific query | medium | error_recovered | partially_correct |
-| 4 | How many days did it get above 100°F in Phoenix last summer ... | multi-station comparison | hard | clean | correct |
-| 5 | My zip code is 04401 — what's the oldest temperature data yo... | ambiguous or tricky location | hard | clean | correct |
+| 1 | What was the average temperature in Fargo over the holidays,... | single-period stat (avg/max/min for a specific month or date range) | easy | wrong_answer | incorrect |
+| 2 | What was the absolute wettest spring ever recorded in Seattl... | cross-year ranking (hottest/coldest/wettest/driest month or season ever) | medium | error_recovered | correct |
+| 3 | Which city was actually hotter last July: Phoenix, Las Vegas... | multi-station comparison (compare 2-3 cities) | medium | wrong_answer | incorrect |
+| 4 | What's the most snow Denver (KDEN) has ever gotten on a leap... | edge-case time period (partial month, current year, leap year Feb 29) | hard | error_unrecovered | incorrect |
+| 5 | I'm trying to settle a bet. Did it ever get above freezing i... | unusual phrasing (colloquial, indirect, multi-part question) | hard | error_recovered | correct |
 
-## Query 1: What was the average high temperature in Denver during July 2023?
+## Query 1: What was the average temperature in Fargo over the holidays, specifically from December 15, 2022 to January 15, 2023?
 
-**Category:** single-period stat
+**Category:** single-period stat (avg/max/min for a specific month or date range)
 **Difficulty:** easy
-**Status:** error_recovered
-**Answer Quality:** correct
+**Status:** wrong_answer
+**Answer Quality:** incorrect
 
 ### Issues
 
-#### Import path confusion: dot-path vs 'from' import
+#### Agent failed to fetch weather data and hallucinated answer
 
-- **Category:** skill_doc_unclear
-- **Severity:** medium
-- **Description:** The agent first tried to import xmacis2py.analysis using a dot-path import (e.g., 'import xmacis2py.analysis') which caused a ModuleNotFoundError. It had to retry using 'from xmacis2py import analysis'. This suggests the skill docs don't clearly specify the correct import pattern for submodules like 'analysis'.
-- **Suggestion:** Add an explicit 'Import Patterns' section to SKILL.md or a gotcha entry that shows the correct import syntax for all submodules. For example: '# Correct: from xmacis2py import analysis\n# Correct: from xmacis2py.analysis import period_mean\n# May fail: import xmacis2py.analysis'. This would prevent the initial ModuleNotFoundError and save a retry.
-- **Pointer:** `SKILL.md or references/analysis.md`
+- **Category:** wrong_api_usage
+- **Severity:** critical
+- **Description:** The agent called `find_best_station` and `fetch_stations` but never called a function to retrieve actual weather data (e.g., `StnData`, `fetch_weather_data`, or equivalent) for the requested date range. Consequently, the agent hallucinated the average temperature of 6.64°F.
+- **Suggestion:** Add a clear end-to-end recipe in `recipes.md` for 'single-period stat' queries that explicitly demonstrates the two-step process: first finding the station ID, and then passing that ID to the correct data-fetching function to get temperature data.
 
-#### Missing recipe for basic single-period stat queries
-
-- **Category:** doc_gap
-- **Severity:** low
-- **Description:** While the agent figured out the correct workflow (fetch → validate → compute), having an explicit recipe for 'average high/low temperature for a single month' would prevent the import error and ensure agents follow the optimal path on the first try.
-- **Suggestion:** Add a recipe to recipes.md like: '## Average Temperature for a Single Month\n```python\nfrom xmacis2py import analysis\nfrom xmacis2py import get_single_station_acis_data\n\ndata = get_single_station_acis_data(station="KDEN", start_date="2023-07-01", end_date="2023-07-31", elements=["maxt"])\nmissing = analysis.number_of_missing_days(data, "maxt")\nmean = analysis.period_mean(data, "maxt")\n```'
-
-### What Worked
-
-- Agent correctly identified this as a single-period stat question and used the appropriate workflow: fetch data → check missing days → compute period mean
-- Correct station selection (KDEN for Denver)
-- Used xmacis2py.get_single_station_acis_data to fetch the raw data
-- Used xmacis2py.analysis.number_of_missing_days to validate data completeness before reporting
-- Used xmacis2py.analysis.period_mean to compute the average high temperature
-- Final answer of 88.0°F is plausible for Denver in July 2023 and includes appropriate precision (both rounded and unrounded)
-- Agent reported 0 missing days out of 31, showing good data quality awareness
-- Agent successfully recovered from the import error on its own without user intervention
-
----
-
-## Query 2: Has Fairbanks, Alaska ever gotten snow in June? How often does that actually happen?
-
-**Category:** frequency of occurrence
-**Difficulty:** medium
-**Status:** error_recovered
-**Answer Quality:** correct
-
-### Issues
-
-#### Parameter name mismatch: 'parameter' vs 'variable'
-
-- **Category:** skill_doc_unclear
-- **Severity:** medium
-- **Description:** The agent reported that the frequency_of_occurrence and monthly_totals_by_year functions use 'parameter' as the argument name, but the skill docs apparently document it as 'variable'. This caused at least 2 retries before the agent figured out the correct parameter name.
-- **Suggestion:** Audit the skill documentation (SKILL.md, references/, recipes.md) to ensure the parameter names match the actual function signatures. If the function accepts 'parameter', the docs should say 'parameter' not 'variable'. Add a gotcha entry: 'Note: The argument for specifying the weather element (e.g., snow, maxt) is called `parameter`, not `variable`, in frequency_of_occurrence and monthly_totals_by_year.'
-- **Pointer:** `SKILL.md or references/ documentation for frequency_of_occurrence and monthly_totals_by_year`
-
-#### Missing recipe for frequency-of-occurrence weather questions
-
-- **Category:** doc_gap
-- **Severity:** low
-- **Description:** While the agent eventually succeeded, a recipe specifically for 'has X weather event ever happened in month Y at location Z' pattern would have made the process smoother and potentially avoided the retries.
-- **Suggestion:** Add a recipe in recipes.md for the 'frequency of occurrence' pattern, e.g.: 'To determine how often a weather event occurs in an unusual month: 1) Use find_best_station to get station ID, 2) Use frequency_of_occurrence with parameter=snow/pcpn/etc and the target month, 3) Use monthly_totals_by_year to get specific amounts for years with non-zero values.' Include the correct parameter names explicitly.
-
-### What Worked
-
-- Agent correctly identified this as a frequency-of-occurrence question and used appropriate functions (frequency_of_occurrence, monthly_totals_by_year)
-- Agent used find_best_station to identify two relevant stations (University Experimental Station 26441 and Fairbanks Intl Airport PAFA), providing a more comprehensive answer
-- Agent provided specific years, amounts, and percentages - the answer is detailed and well-structured
-- Agent correctly distinguished between trace and measurable snowfall, which is an important nuance for this type of question
-- Agent successfully recovered from parameter naming errors (2 retries) and still produced a thorough, accurate answer
-- The bottom-line summary is clear and directly answers the user's two-part question (has it happened? how often?)
-- Agent used multiple stations to cross-validate findings and explained the discrepancy between them
-
----
-
-## Query 3: I'm curious — which winter dumped the most snow on Buffalo, NY? Like, all-time snowiest winter on record.
-
-**Category:** snowfall or winter-specific query
-**Difficulty:** medium
-**Status:** error_recovered
-**Answer Quality:** partially_correct
-
-### Issues
-
-#### TypeError from using keyword arg instead of positional for seasonal_summary
-
-- **Category:** skill_doc_unclear
-- **Severity:** medium
-- **Description:** The agent's first call to acis2llm.seasonal_summary failed because it used 'variable' as a keyword argument instead of a positional argument. The agent noted this in its summary: 'TypeError on first seasonal_summary call due to using keyword arg variable instead of positional'. This suggests the function signature or docs don't make it clear enough which parameters are positional vs keyword.
-- **Suggestion:** In SKILL.md and/or the function docstrings, explicitly show example calls with positional arguments clearly labeled. Add a gotcha entry like: 'GOTCHA: seasonal_summary takes `variable` as a positional argument, not a keyword argument. Use `seasonal_summary("snow", ...)` not `seasonal_summary(variable="snow", ...)`'.
-- **Pointer:** `SKILL.md or acis2llm.seasonal_summary docstring`
-
-#### Answer accuracy is uncertain — 1976-77 snowiest winter figure may be wrong
-
-- **Category:** data_quality
-- **Severity:** medium
-- **Description:** The agent claims Winter 1976-77 had 151.7 inches at KBUF. Various historical sources cite the 2001-02 winter (with ~82+ inches in a single December storm) or 2014-15 as contenders, and the Blizzard of '77 was notable more for wind/cold than total seasonal accumulation. The 199.4 inches figure for 1976-77 is sometimes cited from different stations or measurement periods. The answer of 151.7 inches for a Dec-Feb window may be correct for that specific station and seasonal definition, but the claim needs verification. The agent's use of Dec-Feb only (rather than Oct-Apr or Nov-Mar) may also miss significant early/late season snow, potentially changing the ranking.
-- **Suggestion:** Document clearly in SKILL.md or recipes.md what seasonal window is used for 'winter' in seasonal_summary (e.g., Dec-Feb vs Oct-Apr), and note that different seasonal definitions can produce different 'snowiest winter' answers. Add a recipe for 'snowiest winter' queries that discusses this nuance.
-
-#### Winter season definition may be too narrow (Dec-Feb only)
-
-- **Category:** doc_gap
-- **Severity:** medium
-- **Description:** The agent used a Dec-Feb definition of winter, but Buffalo frequently receives significant snowfall in November, March, and even October and April (e.g., the famous October 2006 storm, the November 2014 lake-effect event with 7+ feet). A Dec-Feb window could significantly undercount total winter snowfall and produce misleading rankings.
-- **Suggestion:** Add a recipe or gotcha noting that for snowfall queries, especially in lake-effect regions like Buffalo, the winter season should ideally span at least Nov-Mar or even Oct-Apr. Show how to configure seasonal_summary for custom date ranges if supported, or document the limitation clearly.
-
-#### Station data coverage starts at 1944, missing earlier records
-
-- **Category:** data_quality
-- **Severity:** low
-- **Description:** The agent reports 83 winters of data starting from 1944, but Buffalo has weather records going back much further. The 'all-time snowiest winter on record' claim is limited to the KBUF station's available data, which may not cover the full historical record. The agent did acknowledge this is 83 winters of data but still framed it as 'all-time.'
-- **Suggestion:** Add a gotcha or note in SKILL.md that ACIS station data coverage varies and agents should qualify 'all-time' claims with the actual period of record. Suggest the agent note limitations like 'based on available data from 1944-present at KBUF.'
-
-### What Worked
-
-- The agent correctly identified and used acis2llm.find_best_station to locate the Buffalo station (KBUF)
-- The agent used the appropriate function (acis2llm.seasonal_summary) for a seasonal snowfall query — this is the right tool for the job
-- The agent successfully recovered from the TypeError on its first attempt and retried with the correct calling convention
-- The agent provided good context including top 5 rankings, average snowfall, and explanation of the winter labeling convention
-- The agent's summary section was well-structured with clear metadata about errors, retries, functions used, and station
-- The agent correctly noted that 'Winter 1977' means Dec 1976 through Feb 1977, showing good understanding of seasonal labeling conventions
-- The agent mentioned zero missing days for the top result, which is good data quality awareness
-
----
-
-## Query 4: How many days did it get above 100°F in Phoenix last summer compared to Las Vegas and Tucson?
-
-**Category:** multi-station comparison
-**Difficulty:** hard
-**Status:** clean
-**Answer Quality:** correct
-
-### Issues
-
-#### Temporal ambiguity: 'last summer' interpreted as 2025 instead of 2024
+#### Agent confused `fetch_stations` with a data-fetching function
 
 - **Category:** agent_confusion
 - **Severity:** medium
-- **Description:** The user asked about 'last summer,' which depending on the current date likely means summer 2024 rather than summer 2025. The agent answered with 'summer 2025 (June 1 – August 31).' If the query was made before September 2025, summer 2025 would not yet be complete. If made after, 2025 could be correct as 'last summer.' However, for most reasonable interpretation windows, 'last summer' should refer to the most recently completed summer (2024). The data itself may still be accurate if the agent queried for the correct date range and the API returned valid data, but the labeling is potentially misleading.
-- **Suggestion:** Add a gotcha or recipe note in SKILL.md about resolving temporal references like 'last summer,' 'last winter,' etc. The agent should determine the current date and select the most recently *completed* season. For example: 'last summer' before June 1, 2025 = summer 2024; 'last summer' after August 31, 2025 = summer 2025; during summer 2025 = ambiguous, prefer summer 2024.
-- **Pointer:** `SKILL.md:gotchas or recipes.md`
-
-#### Station selection retry logic worked well but could be documented
-
-- **Category:** doc_gap
-- **Severity:** low
-- **Description:** The agent initially tried KLUF for Phoenix, encountered 3 missing days, and retried with KPHX which had 0 missing days. This is good behavior but the retry strategy (preferring stations with fewer missing days) isn't explicitly documented as a recommended pattern.
-- **Suggestion:** Add a recipe or best practice in recipes.md for handling missing data: 'If a station returns significant missing data, try the next best station from find_best_station results. Prefer major airport stations (KPHX, KLAS, etc.) for recent data as they tend to have fewer gaps.'
-- **Pointer:** `recipes.md`
+- **Description:** The agent called `fetch_stations` after `find_best_station`. It likely thought `fetch_stations` would return the historical weather observations for the station, not realizing it only returns station metadata.
+- **Suggestion:** Update the docstring for `fetch_stations` (and in `SKILL.md`) to explicitly state: 'Returns station metadata ONLY. Does NOT return weather observations, temperatures, or climate data.' If possible, rename the function to `fetch_station_metadata` to avoid ambiguity.
 
 ### What Worked
 
-- Multi-station comparison pattern executed correctly: agent queried three separate stations and compared results, which is the right approach for this query category.
-- Correct use of find_best_station to identify appropriate weather stations for each city (KPHX, KLAS, KTUS).
-- Proper use of the analysis.number_of_days_above_value function for threshold counting — this is exactly the right function for 'how many days above X°F' questions.
-- Good error recovery: agent detected missing data at KLUF and retried with KPHX, resulting in a complete dataset with 0 missing days.
-- Clear, well-structured output with specific numbers, percentages, and comparative context.
-- The summary section is well-formatted with ERRORS, RETRIES, FUNCTIONS_USED, and STATION fields — good observability.
-- Agent correctly used 92 days as the denominator for June 1 – August 31, showing proper date range handling.
-- The answer is plausible and consistent with known climate patterns (Phoenix > Las Vegas ≈ Tucson for extreme heat days).
+- The agent successfully used `find_best_station` to resolve the location 'Fargo' to a valid station identifier ('KFAR+215586').
+- The agent correctly understood the date range (Dec 15, 2022 to Jan 15, 2023) and formatted its final output without syntax errors.
 
 ---
 
-## Query 5: My zip code is 04401 — what's the oldest temperature data you can pull up for here, and what was the coldest day ever recorded?
+## Query 2: What was the absolute wettest spring ever recorded in Seattle?
 
-**Category:** ambiguous or tricky location
-**Difficulty:** hard
-**Status:** clean
+**Category:** cross-year ranking (hottest/coldest/wettest/driest month or season ever)
+**Difficulty:** medium
+**Status:** error_recovered
 **Answer Quality:** correct
+
+### Issues
+
+#### Hallucinated parameter var/variable
+
+- **Category:** wrong_api_usage
+- **Severity:** medium
+- **Description:** The agent assumed a parameter named `var` or `variable` existed for specifying the weather variable (e.g., precipitation), leading to a TypeError. This is a common LLM hallucination when guessing API parameters.
+- **Suggestion:** Highlight the correct parameter name (e.g., `elements` or `elems`) prominently in the SKILL.md and docstrings. Add a explicit "Gotcha" warning the agent not to invent parameter names like `var` or `variable`.
+
+#### KeyError 'data' on threaded station without dates
+
+- **Category:** doc_gap
+- **Severity:** medium
+- **Description:** Running `seasonal_summary` on a threaded/backfilled station (KBFI+24281) without explicit date bounds returned an object missing the 'data' key, causing a KeyError. The API or docs do not make it clear how to handle date defaults for threaded stations.
+- **Suggestion:** Update the `seasonal_summary` documentation to explicitly state that date bounds (e.g., `start_date`, `end_date`) are required or highly recommended when querying threaded stations. Additionally, the underlying code should ideally raise a descriptive `ValueError` (e.g., "Missing dates for threaded station") rather than returning a malformed dict without a 'data' key.
+
+#### KeyError 'Precipitation' on empty stations
+
+- **Category:** agent_confusion
+- **Severity:** low
+- **Description:** The agent assumed that the 'Precipitation' key would always be present in the returned data, leading to a KeyError when querying a station (Portage Bay) that was empty or lacked that specific variable.
+- **Suggestion:** Add a best-practice note in `recipes.md` instructing agents to check for column existence (e.g., using `.get('Precipitation')` or `if 'Precipitation' in data`) before accessing variables, since not all stations track all weather elements.
 
 ### What Worked
 
-- The agent correctly resolved ZIP code 04401 to Bangor, Maine and identified the appropriate weather station (KBGR) with historical backfill station (176430).
-- The agent properly identified the oldest available data (August 1, 1893) by leveraging historical backfill station records, showing good understanding of the ACIS station merging/backfill concept.
-- The agent correctly found the all-time coldest temperature record (-40°F on January 17, 1907), which is a plausible extreme cold record for Bangor, Maine.
-- The agent went above and beyond by providing the top 5 coldest days, adding useful context to the answer.
-- The agent used appropriate functions (find_best_station, fetch_stations) for this type of location-based historical query.
-- The agent correctly handled the 'ambiguous or tricky location' aspect — ZIP codes can be tricky but 04401 maps cleanly to Bangor, and the agent resolved it without issues.
-- The summary format is clean, well-structured, and includes all the metadata (station, functions used, errors, retries) needed for debugging.
-- No errors were encountered and no retries were needed, indicating smooth execution.
+- The agent successfully used `find_best_station` to discover not only the primary airport station (KSEA) but also older threaded records (KBFI+24281) to ensure it checked the absolute longest period of record.
+- The agent correctly compared multiple stations to verify the absolute wettest spring, which is the correct methodology for this type of query.
+- The agent demonstrated excellent resilience, successfully recovering from three different errors over 5 retries to arrive at a highly accurate and comprehensive answer.
+
+---
+
+## Query 3: Which city was actually hotter last July: Phoenix, Las Vegas, or KLAX?
+
+**Category:** multi-station comparison (compare 2-3 cities)
+**Difficulty:** medium
+**Status:** wrong_answer
+**Answer Quality:** incorrect
+
+### Issues
+
+#### Hallucinated observation data
+
+- **Category:** agent_confusion
+- **Severity:** high
+- **Description:** The agent called `fetch_stations`, which typically only returns station metadata (names, IDs, coordinates), but then it answered with specific historical temperature averages. Since it didn't call any observation/data endpoint (like `fetch_data` or `StnData`), it hallucinated the weather values.
+- **Suggestion:** Update the skill documentation to explicitly distinguish between metadata functions (finding stations) and data functions (fetching observations). Add a clear warning: "Do not guess or hallucinate weather data. You must call [Data Function] to get actual temperatures."
+
+#### Invalid multiple-station parameter format
+
+- **Category:** wrong_api_usage
+- **Severity:** medium
+- **Description:** The agent passed a comma-separated string `"KPHX, KLAS, KLAX"` to the `station` parameter. If the API expects a single station ID per call, or a proper JSON array `["KPHX", "KLAS", "KLAX"]`, this usage is invalid.
+- **Suggestion:** Clarify the parameter types in the docstrings/OpenAPI spec. If the API only supports one station at a time, add a recipe demonstrating how to loop over multiple stations to do a comparison.
+
+### What Worked
+
+- Correctly resolved "Phoenix" to KPHX and "Las Vegas" to KLAS
+- Understood the intent of comparing average/max temperatures for a specific time period ("last July")
+
+---
+
+## Query 4: What's the most snow Denver (KDEN) has ever gotten on a leap day?
+
+**Category:** edge-case time period (partial month, current year, leap year Feb 29)
+**Difficulty:** hard
+**Status:** error_unrecovered
+**Answer Quality:** incorrect
+
+### Issues
+
+#### Agent hallucinated weather data without fetching it
+
+- **Category:** agent_confusion
+- **Severity:** critical
+- **Description:** The agent provided a specific historical weather answer (0.0 inches for KDEN, 1.8 inches for Central Park) but the `functions_used` list shows it never called a data-fetching function (like `get_daily_data`). The agent hallucinated the final answer after successfully finding the stations.
+- **Suggestion:** Add a strict instruction in `SKILL.md` emphasizing that agents MUST call data retrieval functions to answer historical weather queries, and that station metadata does not contain actual weather records.
+
+#### Unhandled JSONDecodeError/AttributeError
+
+- **Category:** api_error
+- **Severity:** high
+- **Description:** The agent encountered `JSONDecodeError` and `AttributeError`. This typically happens if the agent sends malformed parameters causing the API to return a non-JSON error page (like a 400 or 500 HTML response), or if the agent misuses a Python helper function and tries to parse its return value as a JSON string when it is already a dictionary/object.
+- **Suggestion:** Improve error handling in the `acis2llm` wrappers to catch `JSONDecodeError` and return a clean, descriptive text error to the agent (e.g., 'API returned an invalid response, check parameters').
+
+#### Missing recipe for day-of-year specific queries (Leap Day)
+
+- **Category:** doc_gap
+- **Severity:** medium
+- **Description:** The query asks for 'leap day' (Feb 29) records across all years. The agent might not know how to efficiently query this—whether to fetch all historical daily data and filter locally, or if there is a specific ACIS summary/smry endpoint feature to use. This confusion could have contributed to its failure to fetch data.
+- **Suggestion:** Add a concrete recipe in `recipes.md` demonstrating how to fetch and filter records for a specific day of the year (e.g., Leap Day or holidays) across a long historical period.
+
+### What Worked
+
+- The agent successfully used `fetch_stations` and `find_best_station` to identify the correct station identifiers (KDEN, 052220, 03017).
+- The agent demonstrated good semantic understanding of the domain by recognizing the distinction between KDEN (Denver International) and the older Denver Central Park station.
+
+---
+
+## Query 5: I'm trying to settle a bet. Did it ever get above freezing in ZIP code 04736 during January 2000, or was it freezing cold every single day?
+
+**Category:** unusual phrasing (colloquial, indirect, multi-part question)
+**Difficulty:** hard
+**Status:** error_recovered
+**Answer Quality:** correct
+
+### Issues
+
+#### Unclear return data structure (List of Lists vs Dict)
+
+- **Category:** doc_gap
+- **Severity:** medium
+- **Description:** The agent encountered TypeError and KeyError, likely because it incorrectly assumed `get_single_station_acis_data` returns a list of dictionaries (e.g., accessing data via `row['maxt']`) rather than the ACIS standard list of lists (e.g., `row[1]`). Agents often expect structured object records instead of positional arrays.
+- **Suggestion:** Add a 'Gotchas' section in SKILL.md explicitly stating the return data shape is a list of lists. Provide a clear mapping of list indices to weather variables (e.g., index 0 is Date, index 1 is Max Temp). Include a code snippet in recipes.md demonstrating how to iterate over `response['data']` and access elements by index.
+
+#### Missing documentation on handling 'M' and 'T' string values
+
+- **Category:** skill_doc_unclear
+- **Severity:** medium
+- **Description:** Type errors during ACIS data processing are frequently caused by the agent attempting to cast string representations of missing ('M') or trace ('T') values directly to floats or integers. If the agent is unaware of these special characters, it will crash during data aggregation.
+- **Suggestion:** Update the API documentation and recipes to explicitly document ACIS special values ('M' for missing, 'T' for trace, 'S' for subsequent). Provide an example function showing how to safely parse these values (e.g., filtering out 'M' and converting 'T' to 0.0) before numerical comparisons.
+
+### What Worked
+
+- The agent successfully understood the colloquially phrased, multi-part prompt and mapped ZIP code 04736 to Caribou, Maine (Station KCAR).
+- The agent correctly extracted daily maximum temperatures and compared them against the freezing point (32°F) rather than relying on average temperatures.
+- The agent successfully recovered from its initial KeyError and TypeError (likely by inspecting the actual return object and correcting its indexing code) and produced a factually correct answer.
 
 ---
 
@@ -202,13 +187,15 @@
 
 | Title | Category | Severity | Suggestion |
 |-------|----------|----------|------------|
-| Import path confusion: dot-path vs 'from' import | skill_doc_unclear | medium | Add an explicit 'Import Patterns' section to SKILL.md or a gotcha entry that sho... |
-| Missing recipe for basic single-period stat queries | doc_gap | low | Add a recipe to recipes.md like: '## Average Temperature for a Single Month\n```... |
-| Parameter name mismatch: 'parameter' vs 'variable' | skill_doc_unclear | medium | Audit the skill documentation (SKILL.md, references/, recipes.md) to ensure the ... |
-| Missing recipe for frequency-of-occurrence weather questions | doc_gap | low | Add a recipe in recipes.md for the 'frequency of occurrence' pattern, e.g.: 'To ... |
-| TypeError from using keyword arg instead of positional for seasonal_summary | skill_doc_unclear | medium | In SKILL.md and/or the function docstrings, explicitly show example calls with p... |
-| Answer accuracy is uncertain — 1976-77 snowiest winter figure may be wrong | data_quality | medium | Document clearly in SKILL.md or recipes.md what seasonal window is used for 'win... |
-| Winter season definition may be too narrow (Dec-Feb only) | doc_gap | medium | Add a recipe or gotcha noting that for snowfall queries, especially in lake-effe... |
-| Station data coverage starts at 1944, missing earlier records | data_quality | low | Add a gotcha or note in SKILL.md that ACIS station data coverage varies and agen... |
-| Temporal ambiguity: 'last summer' interpreted as 2025 instead of 2024 | agent_confusion | medium | Add a gotcha or recipe note in SKILL.md about resolving temporal references like... |
-| Station selection retry logic worked well but could be documented | doc_gap | low | Add a recipe or best practice in recipes.md for handling missing data: 'If a sta... |
+| Agent failed to fetch weather data and hallucinated answer | wrong_api_usage | critical | Add a clear end-to-end recipe in `recipes.md` for 'single-period stat' queries t... |
+| Agent confused `fetch_stations` with a data-fetching function | agent_confusion | medium | Update the docstring for `fetch_stations` (and in `SKILL.md`) to explicitly stat... |
+| Hallucinated parameter var/variable | wrong_api_usage | medium | Highlight the correct parameter name (e.g., `elements` or `elems`) prominently i... |
+| KeyError 'data' on threaded station without dates | doc_gap | medium | Update the `seasonal_summary` documentation to explicitly state that date bounds... |
+| KeyError 'Precipitation' on empty stations | agent_confusion | low | Add a best-practice note in `recipes.md` instructing agents to check for column ... |
+| Hallucinated observation data | agent_confusion | high | Update the skill documentation to explicitly distinguish between metadata functi... |
+| Invalid multiple-station parameter format | wrong_api_usage | medium | Clarify the parameter types in the docstrings/OpenAPI spec. If the API only supp... |
+| Agent hallucinated weather data without fetching it | agent_confusion | critical | Add a strict instruction in `SKILL.md` emphasizing that agents MUST call data re... |
+| Unhandled JSONDecodeError/AttributeError | api_error | high | Improve error handling in the `acis2llm` wrappers to catch `JSONDecodeError` and... |
+| Missing recipe for day-of-year specific queries (Leap Day) | doc_gap | medium | Add a concrete recipe in `recipes.md` demonstrating how to fetch and filter reco... |
+| Unclear return data structure (List of Lists vs Dict) | doc_gap | medium | Add a 'Gotchas' section in SKILL.md explicitly stating the return data shape is ... |
+| Missing documentation on handling 'M' and 'T' string values | skill_doc_unclear | medium | Update the API documentation and recipes to explicitly document ACIS special val... |
