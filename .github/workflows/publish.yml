@@ -15,7 +15,7 @@ jobs:
       name: pypi
       url: https://pypi.org/p/acis2llm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
