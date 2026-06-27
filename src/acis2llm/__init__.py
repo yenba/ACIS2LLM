@@ -14,6 +14,7 @@ the agent-facing playbook.
 
 from acis2llm.composites import (
     VARIABLE_COLUMN_MAP,
+    calendar_date_records,
     frequency_of_occurrence,
     monthly_threshold_counts,
     monthly_totals_by_year,
@@ -30,6 +31,7 @@ __version__ = "0.3.0"
 
 __all__ = [
     "VARIABLE_COLUMN_MAP",
+    "calendar_date_records",
     "fetch_stations",
     "find_best_station",
     "frequency_of_occurrence",
