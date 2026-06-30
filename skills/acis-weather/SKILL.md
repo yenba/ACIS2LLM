@@ -4,7 +4,7 @@ description: Query NOAA RCC ACIS historical weather and climate observations for
 license: MIT
 compatibility: Requires Python 3.10+, `uv` (https://docs.astral.sh/uv/), and network access to data.rcc-acis.org, geocoding.geo.census.gov, and api.zippopotam.us.
 metadata:
-  version: "0.3.0"
+  version: "0.3.1"
   upstream: https://github.com/edrewitz/xmACIS2Py
 ---
 
@@ -101,6 +101,7 @@ If a call fails with `TypeError: unexpected keyword argument` or `KeyError`, **d
 | Custom or calendar-date normals ("average for June 9 across 30 years") | `xmacis2py.analysis.calculate_daily_normals(station, df=df)` — computes normals from a DataFrame without upstream smoothing, useful for custom windows. Pair with `calendar_date_records` for same-day-across-years ranking. |
 | Degree days query ("heating degree days in January") | `xmacis2py.get_single_station_acis_data(station, start_date, end_date)` then `xmacis2py.analysis.period_sum(df, "Heating Degree Days")` or `period_mean(df, "Heating Degree Days")`. The column name is the full English name from the variable table. |
 | "Wettest/hottest/snowiest X ever" (cross-year ranking) | Use `acis2llm.seasonal_summary()` or `monthly_totals_by_year()` to get per-year data, then sort `result["table"]` by `"value"` to find the extreme year. |
+| "Compared to other X's, how Y has this one been?" (historical comparison) | Use `monthly_totals_by_year()` or `seasonal_summary()` for the ranking/percentile, **AND** `get_single_station_climate_normals()` for the official 30-year normal as a second anchor. Report both: the observed historical mean (from the composite) and the WMO-standard normal (from the normals endpoint). |
 
 ## Variable codes
 
@@ -173,15 +174,18 @@ These are non-negotiable. Violating any of them produces incorrect or invented a
 5. **Check `missing_days` before reporting totals.** Composite outputs include per-year `missing_days`. If a year has many missing days the total is misleading — flag it.
 6. **The percentile arg in `period_percentile` is 0–1, not 0–100.** 0.9 = 90th percentile.
 7. **`period_rankings` is high-to-low by default.** Use `ascending=True` for coldest/lowest extremes.
+8. **ACIS data lag: current-day observations may be missing.** There is typically a 1-2 day reporting lag. If the current year/month shows `missing_days > 0`, the total is incomplete and will likely increase. Note this when comparing the current period to historical data — don't rank an incomplete month as final.
 
 ## Pointers — load when needed
 
+**Read `acis2llm-api.md` BEFORE writing code** that uses composites or `find_best_station` — don't wait until a call fails. It has the authoritative return shapes, scoring algorithm for station selection, and `VARIABLE_COLUMN_MAP` constant. The other references are for deep dives on specific functions.
+
 For deeper detail, read these from `references/`:
 
+- `acis2llm-api.md` — full reference for `find_best_station` (including scoring algorithm), `fetch_stations`, all composites (return shapes, extra fields), and `VARIABLE_COLUMN_MAP` constant
 - `xmacis2py-data-access.md` — full signatures for `get_single_station_acis_data`, `get_multi_station_acis_data`, climate-normals and departures variants
 - `xmacis2py-analysis.md` — every per-period stat, threshold count, ranking, running window, detrend, analog-year function
 - `xmacis2py-stations.md` — `single_station_meta` / `multi_station_meta` for raw metadata access
-- `acis2llm-api.md` — full reference for the helpers (`find_best_station`, `fetch_stations`, all composites)
 - `recipes.md` — 7 worked end-to-end examples covering the common shapes (hottest month, threshold counts, top-N seasons, freeze frequency, multi-city compare, long-record backfill, plotting)
 
 If the user asks for a chart, plot it yourself with `matplotlib` against the
