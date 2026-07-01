@@ -47,7 +47,7 @@ No API keys. No rate limits. Network access to `data.rcc-acis.org`,
 ## Mental model
 
 ```
-acis2llm.find_best_station(...)   ── resolve "10001" (ZIP) / "KDEN" (station ID) → station ID
+acis2llm.find_best_station(location, prioritize_distance=False) ── resolve "10001" (ZIP) / "KDEN" (station ID) → station ID
                                     (city-state strings like "Denver, CO" do NOT resolve;
                                      use a ZIP, station ID, or full street address)
                 ↓
@@ -102,6 +102,7 @@ If a call fails with `TypeError: unexpected keyword argument` or `KeyError`, **d
 | Degree days query ("heating degree days in January") | `xmacis2py.get_single_station_acis_data(station, start_date, end_date)` then `xmacis2py.analysis.period_sum(df, "Heating Degree Days")` or `period_mean(df, "Heating Degree Days")`. The column name is the full English name from the variable table. |
 | "Wettest/hottest/snowiest X ever" (cross-year ranking) | Use `acis2llm.seasonal_summary()` or `monthly_totals_by_year()` to get per-year data, then sort `result["table"]` by `"value"` to find the extreme year. |
 | "Compared to other X's, how Y has this one been?" (historical comparison) | Use `monthly_totals_by_year()` or `seasonal_summary()` for the ranking/percentile, **AND** `get_single_station_climate_normals()` for the official 30-year normal as a second anchor. Report both: the observed historical mean (from the composite) and the WMO-standard normal (from the normals endpoint). |
+| Comparing local microclimates ("Lexington vs Nicholasville") | Pass `prioritize_distance=True` to `find_best_station` for the suburb. Otherwise, both towns might resolve to the same regional airport due to its long record length. If they still resolve to the same ID, check the `nearby_stations` list in the return dictionary and pick a local station ID manually. |
 
 ## Variable codes
 
@@ -175,6 +176,7 @@ These are non-negotiable. Violating any of them produces incorrect or invented a
 6. **The percentile arg in `period_percentile` is 0–1, not 0–100.** 0.9 = 90th percentile.
 7. **`period_rankings` is high-to-low by default.** Use `ascending=True` for coldest/lowest extremes.
 8. **ACIS data lag: current-day observations may be missing.** There is typically a 1-2 day reporting lag. If the current year/month shows `missing_days > 0`, the total is incomplete and will likely increase. Note this when comparing the current period to historical data — don't rank an incomplete month as final.
+9. **Microclimate Comparisons:** When a user wants to compare two nearby locations, use `find_best_station(..., prioritize_distance=True)` to force strict proximity. If both locations still resolve to the same major airport, do not compare the airport to itself. Look at the `nearby_stations` list returned by `find_best_station` and pick the true local station ID.
 
 ## Pointers — load when needed
 

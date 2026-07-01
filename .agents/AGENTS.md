@@ -1,0 +1,1 @@
+When making changes to the desktop app (in the `desktop/` directory), always run `npm run release` from within the `desktop/` directory when you are finished to automatically bump the version, build the app, and deploy it to the user's Applications folder.

@@ -176,7 +176,7 @@ def _extract_state(display_name: str):
     return None
 
 
-def _bbox_search(lat, lon, target_state, current_year):
+def _bbox_search(lat, lon, target_state, current_year, prioritize_distance=False):
     """Phase 4 — search ACIS for stations within ~0.5 degrees and score them."""
     bbox_offset = 0.5
     bbox = f"{lon - bbox_offset},{lat - bbox_offset},{lon + bbox_offset},{lat + bbox_offset}"
@@ -207,7 +207,9 @@ def _bbox_search(lat, lon, target_state, current_year):
         score -= earliest - 1800
         if state_match:
             score += 2000
-        score -= dist * 200
+            
+        distance_penalty = 20000 if prioritize_distance else 200
+        score -= dist * distance_penalty
 
         scored.append({
             "score": score,
@@ -227,7 +229,7 @@ def _bbox_search(lat, lon, target_state, current_year):
     return scored
 
 
-def find_best_station(location: str):
+def find_best_station(location: str, prioritize_distance: bool = False):
     """Find the ACIS station with the best record near a location.
 
     Waterfall:
@@ -263,7 +265,7 @@ def find_best_station(location: str):
     target_state = _extract_state(geo["display_name"])
 
     try:
-        scored = _bbox_search(geo["lat"], geo["lon"], target_state, current_year)
+        scored = _bbox_search(geo["lat"], geo["lon"], target_state, current_year, prioritize_distance=prioritize_distance)
     except Exception as e:
         return {"error": f"ACIS metadata query failed: {e}"}
 

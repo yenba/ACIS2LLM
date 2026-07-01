@@ -28,7 +28,7 @@ from acis2llm.geocoding import (
 )
 from acis2llm.multi_station import fetch_stations
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 __all__ = [
     "VARIABLE_COLUMN_MAP",
