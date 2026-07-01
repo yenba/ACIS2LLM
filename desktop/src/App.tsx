@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Send, Settings, User, Star, CheckCircle, X, Check, Plus, Trash2, Square, ChevronDown, CloudSun, Download, Copy, RefreshCw } from "lucide-react";
+import { Send, Settings, User, Star, CheckCircle, X, Check, Plus, Trash2, Square, ChevronDown, CloudSun, Download, Copy, RefreshCw, FileText } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { US_CITIES } from "./cities";
@@ -26,6 +26,7 @@ type Message = {
 
 type Model = {
   id: string;
+  selector?: string;
   name?: string;
   provider?: string;
   contextWindow?: number;
@@ -493,6 +494,12 @@ export default function App() {
     );
   };
 
+  // omp's --model expects the fully-qualified selector (e.g. "openrouter/xiaomi/mimo-v2.5-pro").
+  // A model's `id` (e.g. "xiaomi/mimo-v2.5-pro") is NOT sufficient: omp reads the segment before
+  // the first slash as the provider, so passing an id would resolve to the wrong provider.
+  const resolveModelArg = (id: string): string =>
+    models.find(m => m.id === id)?.selector || id;
+
   function sendMessage(messageText: string, isRegenerate = false) {
     if ((!messageText.trim() && !isRegenerate) || isProcessing) return;
 
@@ -515,7 +522,7 @@ export default function App() {
       newConversations = [newConv, ...newConversations];
       setCurrentConversationId(activeId);
       
-      invoke<string>("generate_title", { message: messageText, model: selectedModel })
+      invoke<string>("generate_title", { message: messageText, model: resolveModelArg(selectedModel) })
         .then(title => {
           setConversations(prev => prev.map(c => c.id === activeId ? { ...c, title } : c));
         })
@@ -540,7 +547,7 @@ export default function App() {
 
     const activeHistory = newConversations.find(c => c.id === activeId)?.messages || [];
 
-    invoke("ask_omp", { message: messageText, model: selectedModel, systemPrompt, history: activeHistory })
+    invoke("ask_omp", { message: messageText, model: resolveModelArg(selectedModel), systemPrompt, history: activeHistory })
       .catch(e => {
         console.error(e);
         setConversations(prev => prev.map(c => c.id === activeId ? { ...c, messages: [...c.messages, { role: "bot", content: `Error: ${e}` }] } : c));
@@ -899,13 +906,26 @@ export default function App() {
                           for (const c of conversations) {
                             if (c.messages.length > 0) {
                                try {
-                                 const title = await invoke<string>("generate_title", { message: c.messages[0].content, model: selectedModel });
+                                 const title = await invoke<string>("generate_title", { message: c.messages[0].content, model: resolveModelArg(selectedModel) });
                                  setConversations(prev => prev.map(pc => pc.id === c.id ? { ...pc, title } : pc));
                                } catch(e) { console.error(e); }
                             }
                           }
                         }} className="text-sm font-medium transition-colors px-4 py-2 bg-secondary rounded-md hover:bg-secondary/80 flex items-center gap-2 w-fit">
                           ↻ Regenerate All Titles
+                        </button>
+                      </div>
+                      <div className="pt-4 border-t border-border">
+                        <h4 className="font-medium text-sm">Application Logs</h4>
+                        <p className="text-xs text-muted-foreground mt-1 mb-3">Open the folder containing the log file. Useful for diagnosing model or connection errors.</p>
+                        <button onClick={async () => {
+                          try {
+                            await invoke("open_log_folder");
+                          } catch (e) {
+                            console.error("Failed to open log folder", e);
+                          }
+                        }} className="text-sm font-medium transition-colors px-4 py-2 bg-secondary rounded-md hover:bg-secondary/80 flex items-center gap-2 w-fit">
+                          <FileText className="w-4 h-4" /> Open Logs
                         </button>
                       </div>
                     </div>
