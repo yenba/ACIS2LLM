@@ -232,6 +232,17 @@ def _calculate_frequency(df, column, threshold, comparison, month=None, season=N
     ).reset_index()
 
     grouped = grouped[grouped["missing_days"] <= grouped["total_days"] * 0.1]
+
+    # Drop partial boundary seasons. A season window (e.g. winter = Dec-Feb)
+    # fetched over a multi-year span picks up a leading fragment (Jan/Feb of
+    # the first year, with no preceding December) and a trailing fragment
+    # (December of the final year, with no following Jan/Feb). Counting those
+    # as full "years" inflates the denominator in the X-of-N summary. Require
+    # ~20 days per season month, mirroring _aggregate_seasonal_by_year.
+    if season is not None:
+        min_days = len(target_months) * 20
+        grouped = grouped[grouped["total_days"] >= min_days]
+
     if grouped.empty:
         return {"error": "No years with sufficient data found."}
 

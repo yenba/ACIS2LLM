@@ -2,7 +2,8 @@
 
 Adds three things on top of `xmacis2py`:
 
-  * ``find_best_station`` — resolve "Denver, CO" / "10001" / "KNYC" → station ID
+  * ``find_best_station`` — resolve "10001" (ZIP) / "KNYC" (station ID) /
+    a street address → station ID (plain "City, State" does not resolve)
   * ``fetch_stations`` — multi-station aggregation (``"A,B"``) and backfill (``"A+B"``)
   * Composite analyses — ``seasonal_summary``, ``monthly_totals_by_year``,
     ``frequency_of_occurrence``, ``monthly_threshold_counts``

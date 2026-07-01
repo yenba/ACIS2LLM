@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- `frequency_of_occurrence` / `monthly_threshold_counts` over-counted years for **season** queries. A season window fetched across a multi-year span picks up a leading fragment (Jan/Feb of the first year, with no preceding December) and a trailing fragment (December of the final year, with no following Jan/Feb); these partial seasons were counted as full years, inflating `total_years` and the `X out of N (P%)` denominator and adding junk rows to `table`. Now dropped with the same ~20-days-per-month rule `seasonal_summary` already used, so the two composites agree on which seasons are complete. Month queries are unaffected.
+- `SKILL.md` "Return shapes at a glance" referenced a nonexistent `result["station_name"]` key for `find_best_station`; the actual key is `result["name"]`.
+- `acis2llm/__init__.py` module docstring still listed `"Denver, CO"` as a `find_best_station` example, contradicting the 0.2.1 fix (plain city-state strings do not resolve). Corrected to ZIP / station ID / street address.
+
 ## [0.3.0] - 2026-04-28
 
 ### Breaking
