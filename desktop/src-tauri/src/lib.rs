@@ -168,7 +168,6 @@ async fn stop_omp(state: State<'_, AppState>) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState { active_process: Mutex::new(None) })
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![get_models, ask_omp, generate_title, stop_omp])
         .run(tauri::generate_context!())
