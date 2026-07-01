@@ -194,6 +194,25 @@ class TestCalculateFrequency:
         )
         assert "%" in result["summary"]
 
+    def test_season_drops_partial_boundary_years(self, nyc_df):
+        """Winter fetched over a multi-year span picks up a leading Jan/Feb-only
+        fragment and a trailing Dec-only fragment. Those partial seasons must not
+        be counted as full years — the denominator should match the complete
+        winters that _aggregate_seasonal_by_year keeps.
+        """
+        freq = _calculate_frequency(
+            nyc_df, "Minimum Temperature", threshold=32,
+            comparison="at_or_below", season="winter",
+        )
+        seasonal = _aggregate_seasonal_by_year(
+            nyc_df, "Minimum Temperature", season_months=[12, 1, 2],
+            aggregation="min",
+        )
+        freq_years = {r["year"] for r in freq["table"]}
+        seasonal_years = {r["year"] for r in seasonal["table"]}
+        assert freq_years == seasonal_years
+        assert freq["total_years"] == len(seasonal_years)
+
 
 class TestIsZipCode:
     def test_valid_5_digit(self):
