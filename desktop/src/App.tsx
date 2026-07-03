@@ -7,6 +7,24 @@ import remarkGfm from "remark-gfm";
 import { US_CITIES } from "./cities";
 import "./App.css";
 
+/**
+ * Sanitize LLM output for ReactMarkdown.
+ * Many models (especially DeepSeek) emit raw HTML tags like
+ * <span style="color:red">value</span> which react-markdown escapes
+ * into visible angle-bracket text.  Strip the tags but keep their
+ * text content so the data is still shown.
+ */
+function sanitizeForMarkdown(raw: string): string {
+  let s = raw;
+  // Fix double-blank-line-separated table rows (common streaming artifact)
+  s = s.replace(/\|\n\n\|/g, '|\n|');
+  // Remove HTML tags but keep their text content
+  s = s.replace(/<\/?[a-z][a-z0-9]*\b[^>]*>/gi, '');
+  // Collapse leftover runs of 3+ newlines to 2
+  s = s.replace(/\n{3,}/g, '\n\n');
+  return s;
+}
+
 type Conversation = {
   id: string;
   title: string;
@@ -992,10 +1010,31 @@ export default function App() {
                         <div className="my-6 w-full overflow-hidden rounded-xl border border-border shadow-sm bg-card">
                           <table className="w-full !m-0 border-0" {...props} />
                         </div>
-                      )
+                      ),
+                      thead: ({ node, ...props }) => (
+                        <thead className="bg-muted" {...props} />
+                      ),
+                      th: ({ node, ...props }) => (
+                        <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wider text-foreground/70 border-b border-border" {...props} />
+                      ),
+                      td: ({ node, ...props }) => (
+                        <td className="py-3 px-4 text-sm text-foreground border-b border-border/40 align-middle" {...props} />
+                      ),
+                      code: ({ node, children, className, ...props }) => {
+                        // Block code (inside <pre>)
+                        if (className) {
+                          return <code className={className} {...props}>{children}</code>;
+                        }
+                        // Inline code — render without prose backtick pseudo-elements
+                        return (
+                          <code className="not-prose bg-muted/80 text-foreground px-1.5 py-0.5 rounded text-[0.85em] font-mono" {...props}>
+                            {children}
+                          </code>
+                        );
+                      },
                     }}
                   >
-                    {msg.content.replace(/\|\n\n\|/g, '|\n|')}
+                    {sanitizeForMarkdown(msg.content)}
                   </ReactMarkdown>
                 ) : (
                   msg.content
