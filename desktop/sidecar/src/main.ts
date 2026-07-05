@@ -15,9 +15,13 @@ async function main() {
     process.exit(1);
   }
 
-  // Chat modes are implemented in Task 2.
-  console.error("Error: chat mode not implemented yet");
-  process.exit(1);
+  if (args.mode === "json") {
+    const { runJson } = await import("./run");
+    await runJson(args.prompt, args.model);
+  } else {
+    const { runText } = await import("./run");
+    await runText(args.prompt, args.model);
+  }
 }
 
 main().catch((err) => {
