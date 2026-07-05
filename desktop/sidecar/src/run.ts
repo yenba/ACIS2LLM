@@ -1,10 +1,19 @@
+import { initEnv } from "./env";
 import { serializeEvent } from "./events";
 import { buildSession } from "./session";
 
 export async function runJson(prompt: string, model: string): Promise<void> {
-  const session = await buildSession(model, { withTools: true });
-  session.subscribe((event: any) => {
-    const line = serializeEvent(event);
+  const env = initEnv();
+  const session = await buildSession(model, {
+    withTools: true,
+    cwd: env.workspaceDir,
+    agentDir: env.agentDir,
+    bash: { profilePath: env.profilePath, workspaceDir: env.workspaceDir, env: env.bashEnv },
+  });
+  session.subscribe((event: unknown) => {
+    // We treat event as a generic record with a type field for serializeEvent.
+    const e = event as { type: string; [k: string]: unknown };
+    const line = serializeEvent(e);
     if (line) console.log(line);
   });
   await session.prompt(prompt);
@@ -13,8 +22,6 @@ export async function runJson(prompt: string, model: string): Promise<void> {
 export async function runText(prompt: string, model: string): Promise<void> {
   const session = await buildSession(model, { withTools: false });
   await session.prompt(prompt);
-  // AgentSession exposes a built-in helper for this extraction (SDK 0.80.3);
-  // the brief's manual `session.agent.state.messages` walk isn't needed.
   const text = session.getLastAssistantText();
   if (text) {
     console.log(text.trim());

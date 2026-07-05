@@ -9,6 +9,8 @@ import { createSandboxedBash, type BashConfig } from "./bash-tool";
 export interface SessionOptions {
   withTools: boolean;
   bash?: BashConfig;
+  cwd?: string;
+  agentDir?: string;
 }
 
 export async function buildSession(modelSelector: string, opts: SessionOptions) {
@@ -30,6 +32,8 @@ export async function buildSession(modelSelector: string, opts: SessionOptions) 
     authStorage,
     modelRegistry,
     model,
+    cwd: opts.cwd,
+    agentDir: opts.agentDir,
     sessionManager: SessionManager.inMemory(),
     ...(opts.withTools
       ? opts.bash
