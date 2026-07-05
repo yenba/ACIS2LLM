@@ -106,6 +106,9 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  const [hasFirstToken, setHasFirstToken] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [statusMessage, setStatusMessage] = useState("");
   
   const [activeProvider, setActiveProvider] = useState<string>("");
   const [systemPrompt, setSystemPrompt] = useState<string>("");
@@ -230,6 +233,7 @@ export default function App() {
     const unlistenOutput = listen<string>("omp-output", (event) => {
       if (ttftRef.current === null) {
         ttftRef.current = Date.now() - startTimeRef.current;
+        setHasFirstToken(true);
       }
       tokensRef.current += 1;
       
@@ -257,6 +261,12 @@ export default function App() {
           return conv;
         });
       });
+    });
+
+    const unlistenStatus = listen<string>("omp-status", (event) => {
+      if (event.payload.trim()) {
+        setStatusMessage(event.payload.trim());
+      }
     });
 
     const unlistenDone = listen("omp-done", () => {
@@ -291,12 +301,27 @@ export default function App() {
     return () => {
       unlistenOutput.then((f) => f());
       unlistenDone.then((f) => f());
+      unlistenStatus.then((f) => f());
     };
   }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Elapsed timer for the typing indicator during TTFT wait
+  useEffect(() => {
+    if (!isProcessing) {
+      setElapsedSeconds(0);
+      setStatusMessage("");
+      setHasFirstToken(false);
+      return;
+    }
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isProcessing]);
 
   // Derived state for Settings Modal
   const providers = useMemo(() => {
@@ -522,6 +547,9 @@ export default function App() {
     if ((!messageText.trim() && !isRegenerate) || isProcessing) return;
 
     setIsProcessing(true);
+    setHasFirstToken(false);
+    setElapsedSeconds(0);
+    setStatusMessage("");
     startTimeRef.current = Date.now();
     ttftRef.current = null;
     tokensRef.current = 0;
@@ -1073,14 +1101,32 @@ export default function App() {
           {isProcessing && (
             <div className="flex items-start gap-4 justify-start">
               <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
-                <CloudSun className="w-5 h-5 text-primary" />
+                <CloudSun className={`w-5 h-5 text-primary ${!hasFirstToken ? 'animate-pulse' : ''}`} />
               </div>
               <div className="px-4 py-3 rounded-lg bg-secondary text-secondary-foreground border border-border">
-                <div className="flex gap-1 items-center h-5">
-                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
-                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.15s]" />
-                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.3s]" />
-                </div>
+                {!hasFirstToken ? (
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex gap-1 items-center">
+                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" />
+                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]" />
+                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]" />
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        Thinking{elapsedSeconds > 0 ? <span className="tabular-nums"> · {elapsedSeconds}s</span> : '…'}
+                      </span>
+                    </div>
+                    {statusMessage && (
+                      <p className="text-[11px] text-muted-foreground/70 truncate max-w-xs">{statusMessage}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex gap-1 items-center h-5">
+                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.15s]" />
+                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.3s]" />
+                  </div>
+                )}
               </div>
             </div>
           )}

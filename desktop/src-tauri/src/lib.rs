@@ -169,11 +169,16 @@ async fn ask_omp(app: AppHandle, state: State<'_, AppState>, message: String, mo
         *p = Some(child);
     }
 
-    // Collect stderr on its own thread so an errored model doesn't hang silently.
+    // Stream stderr on its own thread, emitting status events in real-time
+    // so the UI can show progress during the TTFT wait.
+    let app_for_stderr = app.clone();
     let stderr_handle = std::thread::spawn(move || {
         let mut buf = String::new();
         let reader = BufReader::new(stderr);
         for line_content in reader.lines().map_while(Result::ok) {
+            if !line_content.trim().is_empty() {
+                let _ = app_for_stderr.emit("omp-status", line_content.clone());
+            }
             buf.push_str(&line_content);
             buf.push('\n');
         }
