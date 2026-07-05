@@ -893,31 +893,31 @@ If you encountered errors, misunderstood the API, or found an inefficient approa
                 <div className="flex-1 p-3 space-y-1">
                   <button
                     onClick={() => setActiveSettingsTab('general')}
-                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'general' ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-secondary text-foreground'}`}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'general' ? 'bg-secondary text-foreground font-medium shadow-sm' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                   >
                     General
                   </button>
                   <button
                     onClick={() => setActiveSettingsTab('providers')}
-                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'providers' ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-secondary text-foreground'}`}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'providers' ? 'bg-secondary text-foreground font-medium shadow-sm' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                   >
                     API Keys
                   </button>
                   <button
                     onClick={() => setActiveSettingsTab('models')}
-                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'models' ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-secondary text-foreground'}`}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'models' ? 'bg-secondary text-foreground font-medium shadow-sm' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                   >
                     Models
                   </button>
                   <button
                     onClick={() => setActiveSettingsTab('prompt')}
-                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'prompt' ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-secondary text-foreground'}`}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'prompt' ? 'bg-secondary text-foreground font-medium shadow-sm' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                   >
                     System Prompt
                   </button>
                   <button
                     onClick={() => setActiveSettingsTab('data')}
-                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'data' ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-secondary text-foreground'}`}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'data' ? 'bg-secondary text-foreground font-medium shadow-sm' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                   >
                     Data Management
                   </button>
@@ -1125,7 +1125,7 @@ If you encountered errors, misunderstood the API, or found an inefficient approa
                       <div className="flex flex-wrap gap-2">
                         <button
                           onClick={() => setActiveProvider('Favorites')}
-                          className={`px-4 py-2 rounded-md text-sm transition-colors flex items-center gap-2 ${activeProvider === 'Favorites' ? 'bg-primary text-primary-foreground font-medium shadow-sm' : 'bg-secondary hover:bg-secondary/80 text-foreground'}`}
+                          className={`px-4 py-1.5 rounded-full text-sm transition-colors flex items-center gap-2 ${activeProvider === 'Favorites' ? 'bg-secondary text-foreground font-medium shadow-sm ring-1 ring-border/50' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                         >
                           <Star className={`w-4 h-4 ${activeProvider === 'Favorites' ? 'fill-current' : 'text-yellow-500'}`} /> Favorites
                         </button>
@@ -1133,7 +1133,7 @@ If you encountered errors, misunderstood the API, or found an inefficient approa
                           <button
                             key={p}
                             onClick={() => setActiveProvider(p)}
-                            className={`px-4 py-2 rounded-md text-sm transition-colors ${activeProvider === p ? 'bg-primary text-primary-foreground font-medium shadow-sm' : 'bg-secondary hover:bg-secondary/80 text-foreground'}`}
+                            className={`px-4 py-1.5 rounded-full text-sm transition-colors ${activeProvider === p ? 'bg-secondary text-foreground font-medium shadow-sm ring-1 ring-border/50' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                           >
                             {p}
                           </button>
