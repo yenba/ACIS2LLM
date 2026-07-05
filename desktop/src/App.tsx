@@ -1104,41 +1104,42 @@ export default function App() {
               <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
                 <CloudSun className={`w-5 h-5 text-primary ${!hasFirstToken ? 'animate-pulse' : ''}`} />
               </div>
-              <div className="px-4 py-3 rounded-lg bg-secondary text-secondary-foreground border border-border min-w-[200px] max-w-[400px]">
-                {!hasFirstToken ? (
-                  <div className="flex flex-col gap-2">
-                    {/* Header with dots and timer */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex gap-1 items-center">
-                          <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" />
-                          <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]" />
-                          <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]" />
-                        </div>
-                        <span className="text-xs font-medium text-muted-foreground">Working</span>
-                      </div>
-                      <span className="text-xs tabular-nums text-muted-foreground/60">{elapsedSeconds}s</span>
-                    </div>
-                    {/* Status log timeline */}
-                    {statusLog.length > 0 && (
-                      <div className="flex flex-col gap-0.5 border-t border-border/50 pt-2">
-                        {statusLog.map((entry, i) => (
-                          <div key={i} className={`flex items-start gap-2 text-[11px] leading-snug ${i === statusLog.length - 1 ? 'text-muted-foreground' : 'text-muted-foreground/40'}`}>
-                            <span className="tabular-nums shrink-0 w-[28px] text-right">{entry.time}s</span>
-                            <span className="truncate">{entry.text}</span>
+              {!hasFirstToken ? (
+                <div className="font-mono text-[11px] leading-relaxed px-3 py-2.5 rounded-lg bg-secondary border border-border min-w-[240px] max-w-[420px]">
+                  {statusLog.length > 0 ? (
+                    <div className="flex flex-col gap-px">
+                      {statusLog.map((entry, i) => {
+                        const isLatest = i === statusLog.length - 1;
+                        return (
+                          <div key={i} className={`flex items-center gap-2 ${isLatest ? 'text-foreground' : 'text-muted-foreground/50'}`}>
+                            {isLatest ? (
+                              <span className="shrink-0 w-3 text-center text-primary animate-spin">⟳</span>
+                            ) : (
+                              <span className="shrink-0 w-3 text-center text-muted-foreground/40">✓</span>
+                            )}
+                            <span className="truncate flex-1">{entry.text}</span>
+                            <span className="tabular-nums shrink-0 text-muted-foreground/40 ml-2">{entry.time}s</span>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">Initializing…</span>
+                  )}
+                  <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-border/40 text-muted-foreground/50">
+                    <span>{statusLog.length} step{statusLog.length !== 1 ? 's' : ''}</span>
+                    <span className="tabular-nums">{elapsedSeconds}s elapsed</span>
                   </div>
-                ) : (
+                </div>
+              ) : (
+                <div className="px-4 py-3 rounded-lg bg-secondary border border-border">
                   <div className="flex gap-1 items-center h-5">
                     <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
                     <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.15s]" />
                     <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.3s]" />
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
           <div ref={messagesEndRef} />
