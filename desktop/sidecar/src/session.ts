@@ -4,6 +4,7 @@ import {
   SessionManager,
   createAgentSession,
 } from "@earendil-works/pi-coding-agent";
+import { join } from "node:path";
 import { createSandboxedBash, type BashConfig } from "./bash-tool";
 
 export interface SessionOptions {
@@ -34,7 +35,7 @@ export async function buildSession(modelSelector: string, opts: SessionOptions) 
     model,
     cwd: opts.cwd,
     agentDir: opts.agentDir,
-    sessionManager: SessionManager.inMemory(),
+    sessionManager: opts.withTools ? SessionManager.create(opts.cwd ?? process.cwd(), opts.agentDir ? join(opts.agentDir, "sessions") : undefined) : SessionManager.inMemory(),
     ...(opts.withTools
       ? opts.bash
         ? { tools: ["read", "bash"], customTools: [createSandboxedBash(opts.bash)] }
