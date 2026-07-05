@@ -1,7 +1,8 @@
 use tauri::{AppHandle, Emitter, Manager, State};
 use std::process::{Command, Stdio, Child};
 use std::io::{BufRead, BufReader};
-use std::sync::{Arc, Mutex};
+use parking_lot::Mutex;
+use std::sync::Arc;
 
 struct AppState {
     // Arc so the streaming thread can reclaim the child to read its exit status,
@@ -141,12 +142,16 @@ async fn ask_omp(app: AppHandle, state: State<'_, AppState>, message: String, mo
     );
 
     let env = get_expanded_env();
-    // Spawn `omp -p <full_prompt> --model <model>`
+    // Spawn `omp -p <full_prompt> --model <model> --mode json`
+    // JSON mode emits structured events (tool calls, text deltas) that
+    // let us show real-time progress in the UI during the TTFT wait.
     let mut child = Command::new(&omp_path)
         .arg("-p")
         .arg(&full_prompt)
         .arg("--model")
         .arg(&model)
+        .arg("--mode")
+        .arg("json")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .envs(env)
@@ -162,43 +167,87 @@ async fn ask_omp(app: AppHandle, state: State<'_, AppState>, message: String, mo
 
     let proc = state.active_process.clone();
     {
-        let mut p = proc.lock().unwrap();
+        let mut p = proc.lock();
         if let Some(mut old) = p.take() {
             let _ = old.kill();
         }
         *p = Some(child);
     }
 
-    // Stream stderr on its own thread, emitting status events in real-time
-    // so the UI can show progress during the TTFT wait.
-    let app_for_stderr = app.clone();
+    // Collect stderr on its own thread so an errored model doesn't hang silently.
     let stderr_handle = std::thread::spawn(move || {
         let mut buf = String::new();
         let reader = BufReader::new(stderr);
         for line_content in reader.lines().map_while(Result::ok) {
-            if !line_content.trim().is_empty() {
-                let _ = app_for_stderr.emit("omp-status", line_content.clone());
-            }
             buf.push_str(&line_content);
             buf.push('\n');
         }
         buf
     });
 
-    // Read stdout in a new thread, then check the exit status.
+    // Parse JSON events from stdout, emitting status and output events.
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
         let mut got_output = false;
+
         for line_content in reader.lines().map_while(Result::ok) {
-            got_output = true;
-            let _ = app.emit("omp-output", line_content + "\n");
+            let Ok(event) = serde_json::from_str::<serde_json::Value>(&line_content) else {
+                continue;
+            };
+            let Some(event_type) = event.get("type").and_then(|t| t.as_str()) else {
+                continue;
+            };
+
+            match event_type {
+                // Tool execution started — emit a human-friendly status message
+                "tool_execution_start" => {
+                    let tool = event.get("toolName").and_then(|t| t.as_str()).unwrap_or("tool");
+                    let intent = event.get("intent").and_then(|t| t.as_str()).unwrap_or("");
+                    let status = if intent.is_empty() {
+                        format!("Running {}…", tool)
+                    } else {
+                        intent.to_string()
+                    };
+                    let _ = app.emit("omp-status", status);
+                }
+                // Final answer — extract the last assistant text from agent_end
+                "agent_end" => {
+                    if let Some(messages) = event.get("messages").and_then(|m| m.as_array()) {
+                        // Walk backwards to find the last assistant message with text
+                        for msg in messages.iter().rev() {
+                            if msg.get("role").and_then(|r| r.as_str()) != Some("assistant") {
+                                continue;
+                            }
+                            let Some(content) = msg.get("content").and_then(|c| c.as_array()) else {
+                                continue;
+                            };
+                            // Collect all text parts from this message
+                            let text: String = content
+                                .iter()
+                                .filter(|c| c.get("type").and_then(|t| t.as_str()) == Some("text"))
+                                .filter_map(|c| c.get("text").and_then(|t| t.as_str()))
+                                .collect::<Vec<_>>()
+                                .join("");
+                            if !text.is_empty() {
+                                got_output = true;
+                                // Emit line-by-line to match existing frontend expectations
+                                for line in text.lines() {
+                                    let _ = app.emit("omp-output", format!("{}\n", line));
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
 
         let stderr_output = stderr_handle.join().unwrap_or_default();
 
         // Reclaim the child to read its exit status. If it's already gone, `stop_omp`
         // cancelled it — that's not an error.
-        let child_opt = proc.lock().unwrap().take();
+        let child_opt = proc.lock().take();
         match child_opt {
             Some(mut child) => {
                 let status = child.wait();
@@ -264,7 +313,7 @@ async fn generate_title(message: String, model: String) -> Result<String, String
 
 #[tauri::command]
 async fn stop_omp(state: State<'_, AppState>) -> Result<(), String> {
-    let mut p = state.active_process.lock().unwrap();
+    let mut p = state.active_process.lock();
     if let Some(mut child) = p.take() {
         log::info!("stop_omp: killing active omp process");
         let _ = child.kill();
