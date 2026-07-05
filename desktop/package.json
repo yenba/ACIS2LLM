@@ -1,14 +1,15 @@
 {
   "name": "desktop",
   "private": true,
-  "version": "0.1.21",
+  "version": "0.1.22",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "release": "node scripts/release.js"
+    "release": "npm run sidecar:build && node scripts/release.js",
+    "sidecar:build": "bash scripts/fetch-uv.sh && cd sidecar && bun install && bun run compile"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.18",
