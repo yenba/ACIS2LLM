@@ -1,3 +1,5 @@
+mod keys;
+
 use tauri::{AppHandle, Emitter, Manager, State};
 use std::process::{Command, Stdio, Child};
 use std::io::{BufRead, BufReader};
@@ -367,7 +369,10 @@ pub fn run() {
             ask_omp,
             generate_title,
             stop_omp,
-            open_log_folder
+            open_log_folder,
+            keys::set_api_key,
+            keys::delete_api_key,
+            keys::get_api_key_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
