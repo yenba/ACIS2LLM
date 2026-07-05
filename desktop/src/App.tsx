@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Send, Settings, User, Star, CheckCircle, X, Check, Plus, Trash2, Square, ChevronDown, CloudSun, Download, Copy, RefreshCw, FileText } from "lucide-react";
+import { Send, Settings, User, Star, CheckCircle, X, Check, Plus, Trash2, Square, ChevronDown, ChevronRight, CloudSun, Download, Copy, RefreshCw, FileText } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { US_CITIES } from "./cities";
@@ -40,6 +40,7 @@ type Message = {
     tokens: number;
     totalTime: number;
   };
+  steps?: {text: string; time: number}[];
 };
 
 type Model = {
@@ -194,7 +195,9 @@ export default function App() {
   const startTimeRef = useRef<number>(0);
   const ttftRef = useRef<number | null>(null);
   const tokensRef = useRef<number>(0);
+  const statusLogRef = useRef<{text: string; time: number}[]>([]);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -266,7 +269,9 @@ export default function App() {
     const unlistenStatus = listen<string>("omp-status", (event) => {
       if (event.payload.trim()) {
         const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-        setStatusLog(prev => [...prev, { text: event.payload.trim(), time: elapsed }]);
+        const entry = { text: event.payload.trim(), time: elapsed };
+        setStatusLog(prev => [...prev, entry]);
+        statusLogRef.current = [...statusLogRef.current, entry];
       }
     });
 
@@ -281,14 +286,14 @@ export default function App() {
               return {
                 ...conv,
                 messages: [
-                  ...conv.messages.slice(0, -1),
                   { 
                     ...lastMsg, 
                     stats: {
                       ttft: ttftRef.current || 0,
                       tokens: tokensRef.current,
                       totalTime
-                    }
+                    },
+                    steps: statusLogRef.current.length > 0 ? [...statusLogRef.current] : undefined
                   }
                 ]
               };
@@ -315,6 +320,7 @@ export default function App() {
     if (!isProcessing) {
       setElapsedSeconds(0);
       setStatusLog([]);
+      statusLogRef.current = [];
       setHasFirstToken(false);
       return;
     }
@@ -551,6 +557,7 @@ export default function App() {
     setHasFirstToken(false);
     setElapsedSeconds(0);
     setStatusLog([]);
+    statusLogRef.current = [];
     startTimeRef.current = Date.now();
     ttftRef.current = null;
     tokensRef.current = 0;
@@ -1069,26 +1076,53 @@ export default function App() {
                   msg.content
                 )}
                 {msg.role === "bot" && (
-                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/50 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-4">
-                      {msg.stats && (
-                         <div className="flex items-center gap-3">
-                           <span title="Time to first token">TTFT: {(msg.stats.ttft / 1000).toFixed(2)}s</span>
-                           <span title="Tokens per second (approx)">Speed: {(msg.stats.tokens / (Math.max(1, msg.stats.totalTime - msg.stats.ttft) / 1000)).toFixed(1)} t/s</span>
-                           <span title="Total response time">Total: {(msg.stats.totalTime / 1000).toFixed(2)}s</span>
-                         </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity">
-                      <button onClick={() => copyMessage(msg.content, i)} className="p-1.5 hover:bg-background rounded-md transition-colors" title="Copy Message">
-                        {copiedIndex === i ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
-                      {i === messages.length - 1 && !isProcessing && (
-                        <button onClick={regenerateResponse} className="p-1.5 hover:bg-background rounded-md transition-colors" title="Regenerate Response">
-                          <RefreshCw className="w-3.5 h-3.5" />
+                  <div className="mt-3 pt-3 border-t border-border/50 text-xs text-muted-foreground">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        {msg.stats && (
+                           <div className="flex items-center gap-3">
+                             <span title="Time to first token">TTFT: {(msg.stats.ttft / 1000).toFixed(2)}s</span>
+                             <span title="Tokens per second (approx)">Speed: {(msg.stats.tokens / (Math.max(1, msg.stats.totalTime - msg.stats.ttft) / 1000)).toFixed(1)} t/s</span>
+                             <span title="Total response time">Total: {(msg.stats.totalTime / 1000).toFixed(2)}s</span>
+                           </div>
+                        )}
+                        {msg.steps && msg.steps.length > 0 && (
+                          <button
+                            onClick={() => setExpandedSteps(prev => {
+                              const next = new Set(prev);
+                              next.has(i) ? next.delete(i) : next.add(i);
+                              return next;
+                            })}
+                            className="flex items-center gap-1 hover:text-foreground transition-colors"
+                            title="Show tool execution steps"
+                          >
+                            <ChevronRight className={`w-3 h-3 transition-transform ${expandedSteps.has(i) ? 'rotate-90' : ''}`} />
+                            {msg.steps.length} step{msg.steps.length !== 1 ? 's' : ''}
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+                        <button onClick={() => copyMessage(msg.content, i)} className="p-1.5 hover:bg-background rounded-md transition-colors" title="Copy Message">
+                          {copiedIndex === i ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
-                      )}
+                        {i === messages.length - 1 && !isProcessing && (
+                          <button onClick={regenerateResponse} className="p-1.5 hover:bg-background rounded-md transition-colors" title="Regenerate Response">
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
+                    {msg.steps && expandedSteps.has(i) && (
+                      <div className="mt-2 font-mono text-[11px] leading-relaxed bg-background/50 rounded-md px-3 py-2 border border-border/30">
+                        {msg.steps.map((step, si) => (
+                          <div key={si} className="flex items-start gap-2 text-muted-foreground/70">
+                            <span className="shrink-0 w-3 text-center text-muted-foreground/40">✓</span>
+                            <span className="flex-1">{step.text}</span>
+                            <span className="tabular-nums shrink-0 ml-2">{step.time}s</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
