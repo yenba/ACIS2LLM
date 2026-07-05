@@ -1,0 +1,18 @@
+{
+  "name": "pi-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "test": "bun test",
+    "compile": "bun build --compile src/main.ts --outfile ../src-tauri/binaries/pi-sidecar-aarch64-apple-darwin"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.80.3",
+    "@sinclair/typebox": "^0.34.49"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.14"
+  }
+}

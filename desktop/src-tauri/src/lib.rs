@@ -1,3 +1,6 @@
+mod keys;
+mod local_provider;
+
 use tauri::{AppHandle, Emitter, Manager, State};
 use std::process::{Command, Stdio, Child};
 use std::io::{BufRead, BufReader};
@@ -42,22 +45,61 @@ fn get_expanded_env() -> Vec<(String, String)> {
 }
 
 // Helper to resolve omp path
-fn get_omp_path() -> String {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let bun_omp = format!("{}/.bun/bin/omp", home);
-    if std::path::Path::new(&bun_omp).exists() {
-        bun_omp
-    } else {
-        "omp".to_string()
-    }
-}
+
 
 /// Map raw omp stderr into a short, user-friendly message.
 /// The full stderr is always written to the log; this is only what we show in the UI.
+
+/// Locate the sidecar. Release builds use the bundled binary next to the app
+/// executable (Tauri externalBin). Debug builds run the TypeScript source via bun.
+fn resolve_sidecar() -> (String, Vec<String>) {
+    if cfg!(debug_assertions) {
+        let sidecar_main = concat!(env!("CARGO_MANIFEST_DIR"), "/../sidecar/src/main.ts");
+        ("bun".to_string(), vec!["run".to_string(), sidecar_main.to_string()])
+    } else {
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_default();
+        (exe_dir.join("pi-sidecar").to_string_lossy().to_string(), vec![])
+    }
+}
+
+/// Environment for the sidecar: expanded PATH (so bun/uv resolve in dev),
+/// workspace/data dirs, bundled resources, and API keys from the keychain.
+/// Keys must never be logged.
+fn sidecar_env(app: &AppHandle) -> Vec<(String, String)> {
+    let mut env = get_expanded_env();
+
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        env.push(("ACIS_DATA_DIR".into(), data_dir.join("sidecar").to_string_lossy().into()));
+        env.push(("ACIS_WORKSPACE_DIR".into(), data_dir.join("workspace").to_string_lossy().into()));
+    }
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let uv = resource_dir.join("uv");
+        if uv.exists() {
+            env.push(("ACIS_UV_DIR".into(), uv.to_string_lossy().into()));
+        }
+        let skill = resource_dir.join("skills/acis-weather");
+        if skill.exists() {
+            env.push(("ACIS_SKILL_DIR".into(), skill.to_string_lossy().into()));
+        }
+    }
+    if cfg!(debug_assertions) {
+        let skill = concat!(env!("CARGO_MANIFEST_DIR"), "/../../skills/acis-weather");
+        env.push(("ACIS_SKILL_DIR".into(), skill.to_string()));
+    }
+
+    for (var, key) in crate::keys::collect_api_keys() {
+        env.push((var, key));
+    }
+    env
+}
+
 fn classify_omp_error(stderr: &str) -> String {
     let s = stderr.to_lowercase();
     if s.contains("no api key") {
-        "Missing API key for this model's provider. Configure it in omp, then try again."
+        "Missing API key for this model's provider. Add it in Settings → AI, then try again."
             .to_string()
     } else if s.contains("model not found") || s.contains("unknown model") || s.contains("not found")
     {
@@ -77,16 +119,13 @@ fn classify_omp_error(stderr: &str) -> String {
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
-async fn get_models() -> Result<String, String> {
-    let omp_path = get_omp_path();
-    let env = get_expanded_env();
-    log::info!("get_models: running `{} models ls --json`", omp_path);
-    // Run `omp models ls --json`
-    let output = Command::new(&omp_path)
-        .arg("models")
-        .arg("ls")
-        .arg("--json")
-        .envs(env)
+async fn get_models(app: AppHandle) -> Result<String, String> {
+    let (prog, mut args) = resolve_sidecar();
+    args.push("--list-models".into());
+    log::info!("get_models: running `{} {:?}`", prog, args);
+    let output = Command::new(&prog)
+        .args(&args)
+        .envs(sidecar_env(&app))
         .output()
         .map_err(|e| {
             let msg = format!("Failed to execute omp: {}", e);
@@ -115,7 +154,7 @@ pub struct Message {
 
 #[tauri::command]
 async fn ask_omp(app: AppHandle, state: State<'_, AppState>, message: String, model: String, system_prompt: String, history: Vec<Message>) -> Result<(), String> {
-    let omp_path = get_omp_path();
+    let (prog, mut args) = resolve_sidecar();
 
     let mut full_prompt = String::new();
     if !system_prompt.trim().is_empty() {
@@ -141,20 +180,12 @@ async fn ask_omp(app: AppHandle, state: State<'_, AppState>, message: String, mo
         if message.chars().count() > 80 { "…" } else { "" }
     );
 
-    let env = get_expanded_env();
-    // Spawn `omp -p <full_prompt> --model <model> --mode json`
-    // JSON mode emits structured events (tool calls, text deltas) that
-    // let us show real-time progress in the UI during the TTFT wait.
-    let mut child = Command::new(&omp_path)
-        .arg("-p")
-        .arg(&full_prompt)
-        .arg("--model")
-        .arg(&model)
-        .arg("--mode")
-        .arg("json")
+    args.extend(["-p", &full_prompt, "--model", &model, "--mode", "json"].map(String::from));
+    let mut child = Command::new(&prog)
+        .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .envs(env)
+        .envs(sidecar_env(&app))
         .spawn()
         .map_err(|e| {
             let msg = format!("Failed to spawn omp: {}", e);
@@ -280,17 +311,14 @@ async fn ask_omp(app: AppHandle, state: State<'_, AppState>, message: String, mo
 }
 
 #[tauri::command]
-async fn generate_title(message: String, model: String) -> Result<String, String> {
-    let omp_path = get_omp_path();
-    let env = get_expanded_env();
+async fn generate_title(app: AppHandle, message: String, model: String) -> Result<String, String> {
+    let (prog, mut args) = resolve_sidecar();
     let prompt = format!("Generate a title for a weather query that starts with this message. The title MUST be strictly formatted as '[Location] - [Topic]' (ensure the location includes a comma before the state), for example 'Denver, CO - Winter Snowfall Probability' or 'Miami, FL - Historical Hurricane Records'. Keep it succinct. Do not include quotes or any other text, just the title itself. Message: {}", message);
+    args.extend(["-p".into(), prompt, "--model".into(), model]);
 
-    let output = Command::new(&omp_path)
-        .arg("-p")
-        .arg(&prompt)
-        .arg("--model")
-        .arg(&model)
-        .envs(env)
+    let output = Command::new(&prog)
+        .args(&args)
+        .envs(sidecar_env(&app))
         .output()
         .map_err(|e| {
             let msg = format!("Failed to execute omp: {}", e);
@@ -369,7 +397,12 @@ pub fn run() {
             ask_omp,
             generate_title,
             stop_omp,
-            open_log_folder
+            open_log_folder,
+            keys::set_api_key,
+            keys::delete_api_key,
+            keys::get_api_key_status,
+            local_provider::set_local_provider,
+            local_provider::get_local_provider
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -385,7 +418,7 @@ mod tests {
         let stderr = "error: No API key found for xiaomi.\n\nUse /login, set an API key...";
         assert_eq!(
             classify_omp_error(stderr),
-            "Missing API key for this model's provider. Configure it in omp, then try again."
+            "Missing API key for this model's provider. Add it in Settings → AI, then try again."
         );
     }
 
@@ -427,7 +460,7 @@ mod tests {
         let stderr = "No API key found for provider; model not found either";
         assert_eq!(
             classify_omp_error(stderr),
-            "Missing API key for this model's provider. Configure it in omp, then try again."
+            "Missing API key for this model's provider. Add it in Settings → AI, then try again."
         );
     }
 }

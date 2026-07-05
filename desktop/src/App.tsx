@@ -135,9 +135,90 @@ export default function App() {
   
   const [activeProvider, setActiveProvider] = useState<string>("");
   const [systemPrompt, setSystemPrompt] = useState<string>("");
+  const [promptSeed, setPromptSeed] = useState(() => Date.now().toString());
   
   const [useRelativeDates, setUseRelativeDates] = useState(() => localStorage.getItem("useRelativeDates") === "true");
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'ai' | 'prompt' | 'data'>('general');
+
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'providers' | 'models' | 'prompt' | 'data'>('general');
+  
+  interface KeyStatus { provider: string; configured: boolean; }
+  
+  const PROVIDER_LABELS: Record<string, string> = {
+    anthropic: "Anthropic", openai: "OpenAI", google: "Google (Gemini)",
+    xai: "xAI", groq: "Groq", openrouter: "OpenRouter",
+  };
+  
+  const [keyStatus, setKeyStatus] = useState<KeyStatus[]>([]);
+  const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
+  const [keyBusy, setKeyBusy] = useState<string | null>(null);
+  
+  const [localUrl, setLocalUrl] = useState<string>("");
+  const [localBusy, setLocalBusy] = useState<boolean>(false);
+  const [localStatusMsg, setLocalStatusMsg] = useState<{ type: 'error' | 'success', text: string } | null>(null);
+  
+  const fetchModels = async () => {
+    try {
+      const jsonStr: string = await invoke("get_models");
+      const parsed = JSON.parse(jsonStr);
+      const fetchedModels: Model[] = parsed.models || [];
+      setModels(fetchedModels);
+      
+      const storedSelected = localStorage.getItem("omp-model");
+      if (fetchedModels.length > 0 && !storedSelected) {
+        setSelectedModel(fetchedModels[0].id);
+      }
+    } catch (e: any) {
+      console.error("Failed to fetch models", e);
+      setModelsError(String(e));
+    }
+  };
+
+  const refreshKeyStatus = async () => {
+    try { 
+      setKeyStatus(await invoke<KeyStatus[]>("get_api_key_status"));
+      const url = await invoke<string | null>("get_local_provider");
+      if (url) {
+        setLocalUrl(url);
+      }
+    }
+    catch (e) { console.error("get_api_key_status failed", e); }
+  };
+  
+  useEffect(() => { if (isSettingsOpen) refreshKeyStatus(); }, [isSettingsOpen]);
+  
+  const saveKey = async (provider: string) => {
+    const key = (keyDrafts[provider] || "").trim();
+    if (!key) return;
+    setKeyBusy(provider);
+    try {
+      await invoke("set_api_key", { provider, key });
+      setKeyDrafts((d) => ({ ...d, [provider]: "" }));
+      await refreshKeyStatus();
+    } catch (e) { console.error("set_api_key failed", e); }
+    finally { setKeyBusy(null); }
+  };
+  
+  const removeKey = async (provider: string) => {
+    setKeyBusy(provider);
+    try { await invoke("delete_api_key", { provider }); await refreshKeyStatus(); }
+    catch (e) { console.error("delete_api_key failed", e); }
+    finally { setKeyBusy(null); }
+  };
+
+  const saveLocalProvider = async () => {
+    setLocalBusy(true);
+    setLocalStatusMsg(null);
+    try {
+      await invoke("set_local_provider", { url: localUrl });
+      setLocalStatusMsg({ type: 'success', text: localUrl ? 'Connected successfully!' : 'Provider removed.' });
+      await fetchModels();
+    } catch (e) {
+      console.error("set_local_provider failed", e);
+      setLocalStatusMsg({ type: 'error', text: String(e) });
+    } finally {
+      setLocalBusy(false);
+    }
+  };
   const [favoriteCities, setFavoriteCities] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem("favoriteCities") || "[]"); } catch { return []; }
   });
@@ -192,7 +273,7 @@ export default function App() {
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [favoriteCities]);
+  }, [favoriteCities, promptSeed]);
   
   const handleToggleRelativeDates = () => {
     const newVal = !useRelativeDates;
@@ -221,24 +302,14 @@ export default function App() {
     const storedSelected = localStorage.getItem("omp-model") || storedDefault;
     setSelectedModel(storedSelected);
     
-    const storedSystemPrompt = localStorage.getItem("omp-system-prompt") || "";
+    const storedSystemPrompt = localStorage.getItem("omp-system-prompt") ?? `You are a capable agent with access to ACIS weather tools.
+Important: Your bash tool automatically executes inside the workspace directory. Do not use cd to navigate there.
+
+Before delivering your final answer, briefly review your trajectory.
+If you encountered errors, misunderstood the API, or found an inefficient approach, use the \`bash\` or \`write\` tools to append a short tip to \`AGENTS.md\` in your workspace directory so you do not make the same mistake next time.
+After updating the file (or if no update is needed), present your final answer.`;
     setSystemPrompt(storedSystemPrompt);
 
-    async function fetchModels() {
-      try {
-        const jsonStr: string = await invoke("get_models");
-        const parsed = JSON.parse(jsonStr);
-        const fetchedModels: Model[] = parsed.models || [];
-        setModels(fetchedModels);
-        
-        if (fetchedModels.length > 0 && !storedSelected) {
-          setSelectedModel(fetchedModels[0].id);
-        }
-      } catch (e: any) {
-        console.error("Failed to fetch models", e);
-        setModelsError(String(e));
-      }
-    }
     fetchModels();
 
     const unlistenOutput = listen<string>("omp-output", (event) => {
@@ -396,6 +467,7 @@ export default function App() {
 
   function createNewChat() {
     setCurrentConversationId(null);
+    setPromptSeed(Date.now().toString());
   }
   
   function deleteChat(id: string) {
@@ -465,6 +537,91 @@ export default function App() {
     (city: string) => `How much rain did ${city} get during hurricane season last year?`,
     (city: string) => `What's the average high temperature in ${city} in December?`,
     (city: string) => `How does this year's rainfall in ${city} compare to average?`,
+    (city: string) => `Has ${city} ever reached 110 degrees?`,
+    (city: string) => `What was the longest streak of days over 90°F in ${city}?`,
+    (city: string) => `When was the last time ${city} dropped below zero?`,
+    (city: string) => `What is the coldest day ever recorded in ${city} in November?`,
+    (city: string) => `How many 100-degree days did ${city} experience in 2023?`,
+    (city: string) => `What's the highest temperature recorded in ${city} during the month of May?`,
+    (city: string) => `Did ${city} break any high temperature records this past summer?`,
+    (city: string) => `When does ${city} typically experience its first 90-degree day of the year?`,
+    (city: string) => `What was the lowest high temperature ever recorded in ${city}?`,
+    (city: string) => `How many days stayed below freezing in ${city} last winter?`,
+    (city: string) => `What was the total snowfall in ${city} during the winter of 2010?`,
+    (city: string) => `Has ${city} ever had a white Christmas? If so, when was the last one?`,
+    (city: string) => `What's the most snow ${city} has ever received in a single day?`,
+    (city: string) => `What was the earliest date of measurable snowfall in ${city}?`,
+    (city: string) => `How does the snowfall in ${city} for 2020 compare to 2021?`,
+    (city: string) => `What is the average annual snowfall for ${city}?`,
+    (city: string) => `How many days with measurable snow did ${city} have last year?`,
+    (city: string) => `What was the snowiest month ever recorded in ${city}?`,
+    (city: string) => `Has ${city} ever received snow in October?`,
+    (city: string) => `What was the greatest snow depth recorded in ${city}?`,
+    (city: string) => `What is the normal annual precipitation for ${city}?`,
+    (city: string) => `How many days with over an inch of rain did ${city} have last year?`,
+    (city: string) => `What's the most rain ${city} has ever received in a 24-hour period?`,
+    (city: string) => `What was the wettest year on record for ${city}?`,
+    (city: string) => `How long was the longest dry spell (no rain) in ${city}?`,
+    (city: string) => `Did ${city} have a wetter than normal spring this year?`,
+    (city: string) => `What is the average rainfall for ${city} in April?`,
+    (city: string) => `How many consecutive days did it rain in ${city} last month?`,
+    (city: string) => `What was the driest summer on record for ${city}?`,
+    (city: string) => `How much precipitation did ${city} get during the year 2005?`,
+    (city: string) => `What is the average first freeze date in ${city}?`,
+    (city: string) => `When is the average last spring frost in ${city}?`,
+    (city: string) => `What are the normal daily high temperatures for ${city} in October?`,
+    (city: string) => `How much does ${city} warm up on average between March and May?`,
+    (city: string) => `What is the typical nighttime low temperature in ${city} during August?`,
+    (city: string) => `Is ${city} typically warmer than average in El Niño years?`,
+    (city: string) => `What was the hottest summer on record for ${city}?`,
+    (city: string) => `What was the coldest winter on record for ${city}?`,
+    (city: string) => `What is the average temperature in ${city} for the month of September?`,
+    (city: string) => `How many days are in the typical growing season for ${city}?`,
+    (city: string) => `How many cooling degree days did ${city} have last July?`,
+    (city: string) => `What was the total heating degree days for ${city} last winter?`,
+    (city: string) => `Does ${city} accumulate more heating or cooling degree days annually?`,
+    (city: string) => `What was the base 50 growing degree day accumulation in ${city} last year?`,
+    (city: string) => `How do the heating degree days in ${city} for 2023 compare to the 30-year normal?`,
+    (city: string) => `What month has the highest cooling demand (CDD) in ${city}?`,
+    (city: string) => `How far above normal were the temperatures in ${city} last month?`,
+    (city: string) => `Was ${city} cooler or warmer than normal during 2022?`,
+    (city: string) => `How much of a precipitation deficit did ${city} have during the 2012 drought?`,
+    (city: string) => `What was the largest positive temperature anomaly for a single month in ${city}?`,
+    (city: string) => `Did ${city} experience any record-breaking cold departures last February?`,
+    (city: string) => `Has the average summer temperature in ${city} increased since 1980?`,
+    (city: string) => `What was the snowiest decade on record for ${city}?`,
+    (city: string) => `Are 100-degree days becoming more frequent in ${city}?`,
+    (city: string) => `Compare the average rainfall in ${city} from 1990-2000 to 2010-2020.`,
+    (city: string) => `What year had the most extreme weather swings in ${city}?`,
+    (city: string) => `Has ${city} ever recorded a temperature exactly at 0°F?`,
+    (city: string) => `What's the rarest weather event recorded in ${city}'s ACIS data?`,
+    (city: string) => `Did it rain in ${city} on July 4th, 1776? (Or the earliest July 4th on record)?`,
+    (city: string) => `What was the weather like in ${city} on January 1, 2000?`,
+    (city: string) => `Has ${city} ever had a high temperature lower than its average low?`,
+    (city: string) => `What was the warmest January ever recorded in ${city}?`,
+    (city: string) => `What was the coldest February ever recorded in ${city}?`,
+    (city: string) => `What was the wettest March ever recorded in ${city}?`,
+    (city: string) => `What was the driest April ever recorded in ${city}?`,
+    (city: string) => `What was the snowiest May ever recorded in ${city}?`,
+    (city: string) => `What was the hottest June ever recorded in ${city}?`,
+    (city: string) => `What was the coolest July ever recorded in ${city}?`,
+    (city: string) => `What was the rainiest August ever recorded in ${city}?`,
+    (city: string) => `What was the driest September ever recorded in ${city}?`,
+    (city: string) => `What was the earliest freeze in October for ${city}?`,
+    (city: string) => `What was the warmest November ever recorded in ${city}?`,
+    (city: string) => `What was the snowiest December ever recorded in ${city}?`,
+    (city: string) => `How many days did the temperature fail to reach 32°F in ${city} last year?`,
+    (city: string) => `How many days had a low temperature above 80°F in ${city}?`,
+    (city: string) => `How many times did ${city} get more than 2 inches of rain in a single day last year?`,
+    (city: string) => `How many days had at least 0.1 inches of snow in ${city} last winter?`,
+    (city: string) => `What is the probability of precipitation in ${city} on Halloween based on historical data?`,
+    (city: string) => `Was 1993 wetter than 1998 in ${city}?`,
+    (city: string) => `Which was colder in ${city}: the winter of 1977 or the winter of 2014?`,
+    (city: string) => `Did ${city} get more snow in January or February last year?`,
+    (city: string) => `What is the highest minimum temperature ever recorded in ${city}?`,
+    (city: string) => `What is the lowest maximum temperature ever recorded in ${city}?`,
+    (city: string) => `How many days in a row did ${city} stay below freezing during the 2021 polar vortex?`,
+    (city: string) => `What is the daily temperature range (high minus low) on average for ${city} in spring?`
   ];
 
   const DEFAULT_CITIES = [
@@ -474,16 +631,15 @@ export default function App() {
 
   const suggestedPrompts = useMemo(() => {
     const cities = favoriteCities.length > 0 ? favoriteCities : DEFAULT_CITIES;
-    // Use a seeded shuffle based on today's date so prompts are stable
-    // within a session but rotate daily
-    const seed = new Date().toDateString();
+    const seed = promptSeed;
     const seededRandom = (i: number) => {
       let h = 0;
       const s = seed + i;
       for (let c = 0; c < s.length; c++) {
-        h = ((h << 5) - h + s.charCodeAt(c)) | 0;
+        h = (Math.imul(31, h) + s.charCodeAt(c)) | 0;
       }
-      return (h >>> 0) / 4294967296;
+      const x = Math.sin(h) * 10000;
+      return x - Math.floor(x);
     };
     const prompts = PROMPT_TEMPLATES.map((fn, i) => {
       const city = cities[Math.floor(seededRandom(i) * cities.length)];
@@ -494,7 +650,7 @@ export default function App() {
       .sort((a, b) => a.r - b.r)
       .map(x => x.p);
     return shuffled.slice(0, 4);
-  }, [favoriteCities]);
+  }, [favoriteCities, promptSeed]);
 
   const groupedConversations = useMemo(() => {
     const now = new Date();
@@ -740,25 +896,31 @@ export default function App() {
                 <div className="flex-1 p-3 space-y-1">
                   <button
                     onClick={() => setActiveSettingsTab('general')}
-                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'general' ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-secondary text-foreground'}`}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'general' ? 'bg-secondary text-foreground font-medium shadow-sm' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                   >
                     General
                   </button>
                   <button
-                    onClick={() => setActiveSettingsTab('ai')}
-                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'ai' ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-secondary text-foreground'}`}
+                    onClick={() => setActiveSettingsTab('providers')}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'providers' ? 'bg-secondary text-foreground font-medium shadow-sm' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
+                  >
+                    API Keys
+                  </button>
+                  <button
+                    onClick={() => setActiveSettingsTab('models')}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'models' ? 'bg-secondary text-foreground font-medium shadow-sm' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                   >
                     Models
                   </button>
                   <button
                     onClick={() => setActiveSettingsTab('prompt')}
-                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'prompt' ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-secondary text-foreground'}`}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'prompt' ? 'bg-secondary text-foreground font-medium shadow-sm' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                   >
                     System Prompt
                   </button>
                   <button
                     onClick={() => setActiveSettingsTab('data')}
-                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'data' ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-secondary text-foreground'}`}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'data' ? 'bg-secondary text-foreground font-medium shadow-sm' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                   >
                     Data Management
                   </button>
@@ -878,14 +1040,95 @@ export default function App() {
                   </div>
                 )}
                 
-                {activeSettingsTab === 'ai' && (
+                {activeSettingsTab === 'providers' && (
+                  <div className="flex flex-col h-full">
+                    <div className="p-6 pb-4 border-b border-border">
+                      <div className="mb-6">
+                        <h3 className="text-lg font-medium mb-2">API Keys</h3>
+                        <p className="text-xs text-muted-foreground mb-3">
+                          Stored securely in the macOS Keychain. Required for the embedded assistant.
+                        </p>
+                        <div className="space-y-2">
+                          {keyStatus.map(({ provider, configured }) => (
+                            <div key={provider} className="flex items-center gap-2">
+                              <span className="w-32 text-sm">{PROVIDER_LABELS[provider] ?? provider}</span>
+                              {configured ? (
+                                <>
+                                  <span className="text-xs text-green-600 flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3" /> Configured
+                                  </span>
+                                  <button
+                                    onClick={() => removeKey(provider)}
+                                    disabled={keyBusy === provider}
+                                    className="text-xs text-destructive hover:underline ml-2"
+                                  >
+                                    Remove
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <input
+                                    type="password"
+                                    value={keyDrafts[provider] ?? ""}
+                                    onChange={(e) => setKeyDrafts((d) => ({ ...d, [provider]: e.target.value }))}
+                                    placeholder="Paste API key"
+                                    className="flex-1 px-2 py-1 text-sm rounded-md border border-input bg-background"
+                                  />
+                                  <button
+                                    onClick={() => saveKey(provider)}
+                                    disabled={keyBusy === provider || !(keyDrafts[provider] || "").trim()}
+                                    className="px-2 py-1 text-xs rounded-md bg-primary text-primary-foreground disabled:opacity-50"
+                                  >
+                                    Save
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mb-6">
+                        <h3 className="text-lg font-medium mb-2">Local Provider</h3>
+                        <p className="text-xs text-muted-foreground mb-3">
+                          Connect to an OpenAI-compatible local API (e.g. llama.cpp, LM Studio, Ollama). Point this to the base URL that exposes <code className="bg-muted px-1 rounded">/models</code> (typically <code className="bg-muted px-1 rounded">http://localhost:11434/v1</code> or <code className="bg-muted px-1 rounded">http://localhost:8080/v1</code>).
+                        </p>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={localUrl}
+                              onChange={(e) => setLocalUrl(e.target.value)}
+                              placeholder="http://localhost:11434/v1"
+                              className="flex-1 px-2 py-1 text-sm rounded-md border border-input bg-background"
+                            />
+                            <button
+                              onClick={saveLocalProvider}
+                              disabled={localBusy}
+                              className="px-3 py-1 text-xs rounded-md bg-primary text-primary-foreground disabled:opacity-50"
+                            >
+                              {localUrl ? "Connect" : "Remove"}
+                            </button>
+                          </div>
+                          {localStatusMsg && (
+                            <p className={`text-xs ${localStatusMsg.type === 'error' ? 'text-destructive' : 'text-green-600'}`}>
+                              {localStatusMsg.text}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {activeSettingsTab === 'models' && (
                   <div className="flex flex-col h-full">
                     <div className="p-6 pb-4 border-b border-border">
                       <h3 className="text-lg font-medium mb-4">Provider Selection</h3>
                       <div className="flex flex-wrap gap-2">
                         <button
                           onClick={() => setActiveProvider('Favorites')}
-                          className={`px-4 py-2 rounded-md text-sm transition-colors flex items-center gap-2 ${activeProvider === 'Favorites' ? 'bg-primary text-primary-foreground font-medium shadow-sm' : 'bg-secondary hover:bg-secondary/80 text-foreground'}`}
+                          className={`px-4 py-1.5 rounded-full text-sm transition-colors flex items-center gap-2 ${activeProvider === 'Favorites' ? 'bg-secondary text-foreground font-medium shadow-sm ring-1 ring-border/50' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                         >
                           <Star className={`w-4 h-4 ${activeProvider === 'Favorites' ? 'fill-current' : 'text-yellow-500'}`} /> Favorites
                         </button>
@@ -893,7 +1136,7 @@ export default function App() {
                           <button
                             key={p}
                             onClick={() => setActiveProvider(p)}
-                            className={`px-4 py-2 rounded-md text-sm transition-colors ${activeProvider === p ? 'bg-primary text-primary-foreground font-medium shadow-sm' : 'bg-secondary hover:bg-secondary/80 text-foreground'}`}
+                            className={`px-4 py-1.5 rounded-full text-sm transition-colors ${activeProvider === p ? 'bg-secondary text-foreground font-medium shadow-sm ring-1 ring-border/50' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                           >
                             {p}
                           </button>
