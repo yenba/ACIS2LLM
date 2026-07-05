@@ -43,12 +43,12 @@ fn get_expanded_env() -> Vec<(String, String)> {
 
 // Helper to resolve omp path
 fn get_omp_path() -> String {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let bun_omp = format!("{}/.bun/bin/omp", home);
-    if std::path::Path::new(&bun_omp).exists() {
-        bun_omp
+    let current_dir = std::env::current_dir().unwrap_or_default();
+    let dev_path = current_dir.join("backend/pi_harness.py");
+    if dev_path.exists() {
+        dev_path.to_string_lossy().to_string()
     } else {
-        "omp".to_string()
+        "backend/pi_harness.py".to_string()
     }
 }
 
@@ -80,12 +80,10 @@ fn classify_omp_error(stderr: &str) -> String {
 async fn get_models() -> Result<String, String> {
     let omp_path = get_omp_path();
     let env = get_expanded_env();
-    log::info!("get_models: running `{} models ls --json`", omp_path);
+    log::info!("get_models: running `{} --list-models`", omp_path);
     // Run `omp models ls --json`
     let output = Command::new(&omp_path)
-        .arg("models")
-        .arg("ls")
-        .arg("--json")
+        .arg("--list-models")
         .envs(env)
         .output()
         .map_err(|e| {
