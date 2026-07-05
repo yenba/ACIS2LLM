@@ -1,4 +1,5 @@
 mod keys;
+mod local_provider;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use std::process::{Command, Stdio, Child};
@@ -399,7 +400,9 @@ pub fn run() {
             open_log_folder,
             keys::set_api_key,
             keys::delete_api_key,
-            keys::get_api_key_status
+            keys::get_api_key_status,
+            local_provider::set_local_provider,
+            local_provider::get_local_provider
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
