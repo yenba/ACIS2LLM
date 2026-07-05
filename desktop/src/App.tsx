@@ -51,16 +51,38 @@ type Model = {
   contextWindow?: number;
 };
 
+const STATE_MAP: Record<string, string> = {
+  'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+  'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA',
+  'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA',
+  'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+  'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS', 'missouri': 'MO',
+  'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+  'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH',
+  'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+  'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT', 'vermont': 'VT',
+  'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY',
+  'district of columbia': 'DC',
+};
+
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>(() => {
-    const stored = localStorage.getItem("omp-conversations");
-    return stored ? JSON.parse(stored) : [];
+    try {
+      const stored = localStorage.getItem("omp-conversations");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
   });
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(() => {
-    const stored = localStorage.getItem("omp-conversations");
-    if (stored) {
-      const convos = JSON.parse(stored);
-      if (convos.length > 0) return convos[0].id;
+    try {
+      const stored = localStorage.getItem("omp-conversations");
+      if (stored) {
+        const convos = JSON.parse(stored);
+        if (convos.length > 0) return convos[0].id;
+      }
+    } catch {
+      // corrupted localStorage — start fresh
     }
     return null;
   });
@@ -128,20 +150,6 @@ export default function App() {
     const q = newCityInput.toLowerCase();
     return US_CITIES.filter(c => c.toLowerCase().includes(q) && !favoriteCities.includes(c)).slice(0, 6);
   }, [newCityInput, favoriteCities]);
-
-  const STATE_MAP: Record<string, string> = {
-    'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
-    'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA',
-    'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA',
-    'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
-    'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS', 'missouri': 'MO',
-    'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
-    'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH',
-    'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
-    'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT', 'vermont': 'VT',
-    'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY',
-    'district of columbia': 'DC',
-  };
 
   const formatCityName = (raw: string): string => {
     // Split on comma or last space to find city vs state
@@ -286,6 +294,7 @@ export default function App() {
               return {
                 ...conv,
                 messages: [
+                  ...conv.messages.slice(0, -1),
                   { 
                     ...lastMsg, 
                     stats: {
@@ -465,13 +474,27 @@ export default function App() {
 
   const suggestedPrompts = useMemo(() => {
     const cities = favoriteCities.length > 0 ? favoriteCities : DEFAULT_CITIES;
-    const prompts = PROMPT_TEMPLATES.map(fn => {
-      const city = cities[Math.floor(Math.random() * cities.length)];
+    // Use a seeded shuffle based on today's date so prompts are stable
+    // within a session but rotate daily
+    const seed = new Date().toDateString();
+    const seededRandom = (i: number) => {
+      let h = 0;
+      const s = seed + i;
+      for (let c = 0; c < s.length; c++) {
+        h = ((h << 5) - h + s.charCodeAt(c)) | 0;
+      }
+      return (h >>> 0) / 4294967296;
+    };
+    const prompts = PROMPT_TEMPLATES.map((fn, i) => {
+      const city = cities[Math.floor(seededRandom(i) * cities.length)];
       return fn(city);
     });
-    const shuffled = prompts.sort(() => 0.5 - Math.random());
+    const shuffled = prompts
+      .map((p, i) => ({ p, r: seededRandom(i + 1000) }))
+      .sort((a, b) => a.r - b.r)
+      .map(x => x.p);
     return shuffled.slice(0, 4);
-  }, [currentConversationId, favoriteCities]);
+  }, [favoriteCities]);
 
   const groupedConversations = useMemo(() => {
     const now = new Date();
@@ -1082,7 +1105,7 @@ export default function App() {
                         {msg.stats && (
                            <div className="flex items-center gap-3">
                              <span title="Time to first token">TTFT: {(msg.stats.ttft / 1000).toFixed(2)}s</span>
-                             <span title="Tokens per second (approx)">Speed: {(msg.stats.tokens / (Math.max(1, msg.stats.totalTime - msg.stats.ttft) / 1000)).toFixed(1)} t/s</span>
+                             <span title="Chunks per second (line-level granularity)">Speed: {(msg.stats.tokens / (Math.max(1, msg.stats.totalTime - msg.stats.ttft) / 1000)).toFixed(1)} chunks/s</span>
                              <span title="Total response time">Total: {(msg.stats.totalTime / 1000).toFixed(2)}s</span>
                            </div>
                         )}
