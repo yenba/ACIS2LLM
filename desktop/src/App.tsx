@@ -1105,19 +1105,19 @@ export default function App() {
                 <CloudSun className={`w-5 h-5 text-primary ${!hasFirstToken ? 'animate-pulse' : ''}`} />
               </div>
               {!hasFirstToken ? (
-                <div className="font-mono text-[11px] leading-relaxed px-3 py-2.5 rounded-lg bg-secondary border border-border min-w-[240px] max-w-[420px]">
+                <div className="font-mono text-xs leading-relaxed px-3 py-2.5 rounded-lg bg-secondary border border-border min-w-[260px] max-w-[480px]">
                   {statusLog.length > 0 ? (
                     <div className="flex flex-col gap-px">
                       {statusLog.map((entry, i) => {
                         const isLatest = i === statusLog.length - 1;
                         return (
-                          <div key={i} className={`flex items-center gap-2 ${isLatest ? 'text-foreground' : 'text-muted-foreground/50'}`}>
+                          <div key={i} className={`flex items-start gap-2 ${isLatest ? 'text-foreground' : 'text-muted-foreground/50'}`}>
                             {isLatest ? (
                               <span className="shrink-0 w-3 text-center text-primary animate-spin">⟳</span>
                             ) : (
                               <span className="shrink-0 w-3 text-center text-muted-foreground/40">✓</span>
                             )}
-                            <span className="truncate flex-1">{entry.text}</span>
+                            <span className="flex-1">{entry.text}</span>
                             <span className="tabular-nums shrink-0 text-muted-foreground/40 ml-2">{entry.time}s</span>
                           </div>
                         );
