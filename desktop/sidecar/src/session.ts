@@ -4,9 +4,11 @@ import {
   SessionManager,
   createAgentSession,
 } from "@earendil-works/pi-coding-agent";
+import { createSandboxedBash, type BashConfig } from "./bash-tool";
 
 export interface SessionOptions {
   withTools: boolean;
+  bash?: BashConfig;
 }
 
 export async function buildSession(modelSelector: string, opts: SessionOptions) {
@@ -29,7 +31,11 @@ export async function buildSession(modelSelector: string, opts: SessionOptions) 
     modelRegistry,
     model,
     sessionManager: SessionManager.inMemory(),
-    ...(opts.withTools ? { tools: ["read", "bash"] } : { noTools: "all" as const }),
+    ...(opts.withTools
+      ? opts.bash
+        ? { tools: ["read"], customTools: [createSandboxedBash(opts.bash)] }
+        : { tools: ["read", "bash"] }
+      : { noTools: "all" as const }),
   });
   return session;
 }
