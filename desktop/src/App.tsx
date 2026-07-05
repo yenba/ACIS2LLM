@@ -138,7 +138,7 @@ export default function App() {
   
   const [useRelativeDates, setUseRelativeDates] = useState(() => localStorage.getItem("useRelativeDates") === "true");
 
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'ai' | 'prompt' | 'data'>('general');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'providers' | 'models' | 'prompt' | 'data'>('general');
   
   interface KeyStatus { provider: string; configured: boolean; }
   
@@ -783,8 +783,14 @@ export default function App() {
                     General
                   </button>
                   <button
-                    onClick={() => setActiveSettingsTab('ai')}
-                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'ai' ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-secondary text-foreground'}`}
+                    onClick={() => setActiveSettingsTab('providers')}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'providers' ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-secondary text-foreground'}`}
+                  >
+                    API Keys
+                  </button>
+                  <button
+                    onClick={() => setActiveSettingsTab('models')}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeSettingsTab === 'models' ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-secondary text-foreground'}`}
                   >
                     Models
                   </button>
@@ -916,11 +922,11 @@ export default function App() {
                   </div>
                 )}
                 
-                {activeSettingsTab === 'ai' && (
+                {activeSettingsTab === 'providers' && (
                   <div className="flex flex-col h-full">
                     <div className="p-6 pb-4 border-b border-border">
                       <div className="mb-6">
-                        <h3 className="text-sm font-medium mb-2">API Keys</h3>
+                        <h3 className="text-lg font-medium mb-2">API Keys</h3>
                         <p className="text-xs text-muted-foreground mb-3">
                           Stored securely in the macOS Keychain. Required for the embedded assistant.
                         </p>
@@ -963,7 +969,13 @@ export default function App() {
                           ))}
                         </div>
                       </div>
-
+                    </div>
+                  </div>
+                )}
+                
+                {activeSettingsTab === 'models' && (
+                  <div className="flex flex-col h-full">
+                    <div className="p-6 pb-4 border-b border-border">
                       <h3 className="text-lg font-medium mb-4">Provider Selection</h3>
                       <div className="flex flex-wrap gap-2">
                         <button
