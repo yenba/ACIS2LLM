@@ -56,9 +56,12 @@ console.log('✅ Updated Cargo.toml');
 
 // 5. Build Tauri App
 console.log('\n🚀 Building Tauri App... (This may take a minute)');
+const buildEnv = { ...process.env };
+delete buildEnv.CI;
 const buildResult = spawnSync('npm', ['run', 'tauri', 'build'], {
   stdio: 'inherit',
-  cwd: rootDir
+  cwd: rootDir,
+  env: buildEnv
 });
 
 if (buildResult.status !== 0) {
