@@ -38,6 +38,7 @@ export function initEnv(): SidecarEnv {
     PATH: uvDir ? `${uvDir}:${basePath}` : basePath,
     UV_CACHE_DIR: join(dataDir, "uv-cache"),
     UV_PYTHON_INSTALL_DIR: join(dataDir, "uv-python"),
+    MPLCONFIGDIR: join(dataDir, "matplotlib-cache"),
   };
   return { workspaceDir, dataDir, agentDir, profilePath, bashEnv };
 }
