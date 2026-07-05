@@ -137,7 +137,45 @@ export default function App() {
   const [systemPrompt, setSystemPrompt] = useState<string>("");
   
   const [useRelativeDates, setUseRelativeDates] = useState(() => localStorage.getItem("useRelativeDates") === "true");
+
   const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'ai' | 'prompt' | 'data'>('general');
+  
+  interface KeyStatus { provider: string; configured: boolean; }
+  
+  const PROVIDER_LABELS: Record<string, string> = {
+    anthropic: "Anthropic", openai: "OpenAI", google: "Google (Gemini)",
+    xai: "xAI", groq: "Groq", openrouter: "OpenRouter",
+  };
+  
+  const [keyStatus, setKeyStatus] = useState<KeyStatus[]>([]);
+  const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
+  const [keyBusy, setKeyBusy] = useState<string | null>(null);
+  
+  const refreshKeyStatus = async () => {
+    try { setKeyStatus(await invoke<KeyStatus[]>("get_api_key_status")); }
+    catch (e) { console.error("get_api_key_status failed", e); }
+  };
+  
+  useEffect(() => { if (isSettingsOpen) refreshKeyStatus(); }, [isSettingsOpen]);
+  
+  const saveKey = async (provider: string) => {
+    const key = (keyDrafts[provider] || "").trim();
+    if (!key) return;
+    setKeyBusy(provider);
+    try {
+      await invoke("set_api_key", { provider, key });
+      setKeyDrafts((d) => ({ ...d, [provider]: "" }));
+      await refreshKeyStatus();
+    } catch (e) { console.error("set_api_key failed", e); }
+    finally { setKeyBusy(null); }
+  };
+  
+  const removeKey = async (provider: string) => {
+    setKeyBusy(provider);
+    try { await invoke("delete_api_key", { provider }); await refreshKeyStatus(); }
+    catch (e) { console.error("delete_api_key failed", e); }
+    finally { setKeyBusy(null); }
+  };
   const [favoriteCities, setFavoriteCities] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem("favoriteCities") || "[]"); } catch { return []; }
   });
@@ -881,6 +919,51 @@ export default function App() {
                 {activeSettingsTab === 'ai' && (
                   <div className="flex flex-col h-full">
                     <div className="p-6 pb-4 border-b border-border">
+                      <div className="mb-6">
+                        <h3 className="text-sm font-medium mb-2">API Keys</h3>
+                        <p className="text-xs text-muted-foreground mb-3">
+                          Stored securely in the macOS Keychain. Required for the embedded assistant.
+                        </p>
+                        <div className="space-y-2">
+                          {keyStatus.map(({ provider, configured }) => (
+                            <div key={provider} className="flex items-center gap-2">
+                              <span className="w-32 text-sm">{PROVIDER_LABELS[provider] ?? provider}</span>
+                              {configured ? (
+                                <>
+                                  <span className="text-xs text-green-600 flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3" /> Configured
+                                  </span>
+                                  <button
+                                    onClick={() => removeKey(provider)}
+                                    disabled={keyBusy === provider}
+                                    className="text-xs text-destructive hover:underline ml-2"
+                                  >
+                                    Remove
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <input
+                                    type="password"
+                                    value={keyDrafts[provider] ?? ""}
+                                    onChange={(e) => setKeyDrafts((d) => ({ ...d, [provider]: e.target.value }))}
+                                    placeholder="Paste API key"
+                                    className="flex-1 px-2 py-1 text-sm rounded-md border border-input bg-background"
+                                  />
+                                  <button
+                                    onClick={() => saveKey(provider)}
+                                    disabled={keyBusy === provider || !(keyDrafts[provider] || "").trim()}
+                                    className="px-2 py-1 text-xs rounded-md bg-primary text-primary-foreground disabled:opacity-50"
+                                  >
+                                    Save
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
                       <h3 className="text-lg font-medium mb-4">Provider Selection</h3>
                       <div className="flex flex-wrap gap-2">
                         <button
