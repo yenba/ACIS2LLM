@@ -631,9 +631,10 @@ export default function App() {
       let h = 0;
       const s = seed + i;
       for (let c = 0; c < s.length; c++) {
-        h = ((h << 5) - h + s.charCodeAt(c)) | 0;
+        h = (Math.imul(31, h) + s.charCodeAt(c)) | 0;
       }
-      return (h >>> 0) / 4294967296;
+      const x = Math.sin(h) * 10000;
+      return x - Math.floor(x);
     };
     const prompts = PROMPT_TEMPLATES.map((fn, i) => {
       const city = cities[Math.floor(seededRandom(i) * cities.length)];
