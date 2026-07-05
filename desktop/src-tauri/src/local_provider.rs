@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::PathBuf;
-use serde::Deserialize;
 use serde_json::{Value, json};
 use reqwest::Client;
 
