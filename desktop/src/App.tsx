@@ -135,6 +135,7 @@ export default function App() {
   
   const [activeProvider, setActiveProvider] = useState<string>("");
   const [systemPrompt, setSystemPrompt] = useState<string>("");
+  const [promptSeed, setPromptSeed] = useState(() => Date.now().toString());
   
   const [useRelativeDates, setUseRelativeDates] = useState(() => localStorage.getItem("useRelativeDates") === "true");
 
@@ -272,7 +273,7 @@ export default function App() {
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [favoriteCities]);
+  }, [favoriteCities, promptSeed]);
   
   const handleToggleRelativeDates = () => {
     const newVal = !useRelativeDates;
@@ -466,6 +467,7 @@ After updating the file (or if no update is needed), present your final answer.`
 
   function createNewChat() {
     setCurrentConversationId(null);
+    setPromptSeed(Date.now().toString());
   }
   
   function deleteChat(id: string) {
@@ -629,9 +631,7 @@ After updating the file (or if no update is needed), present your final answer.`
 
   const suggestedPrompts = useMemo(() => {
     const cities = favoriteCities.length > 0 ? favoriteCities : DEFAULT_CITIES;
-    // Use a seeded shuffle based on today's date so prompts are stable
-    // within a session but rotate daily
-    const seed = new Date().toDateString();
+    const seed = promptSeed;
     const seededRandom = (i: number) => {
       let h = 0;
       const s = seed + i;
@@ -650,7 +650,7 @@ After updating the file (or if no update is needed), present your final answer.`
       .sort((a, b) => a.r - b.r)
       .map(x => x.p);
     return shuffled.slice(0, 4);
-  }, [favoriteCities]);
+  }, [favoriteCities, promptSeed]);
 
   const groupedConversations = useMemo(() => {
     const now = new Date();
