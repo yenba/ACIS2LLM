@@ -108,7 +108,7 @@ export default function App() {
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [hasFirstToken, setHasFirstToken] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [statusMessage, setStatusMessage] = useState("");
+  const [statusLog, setStatusLog] = useState<{text: string; time: number}[]>([]);
   
   const [activeProvider, setActiveProvider] = useState<string>("");
   const [systemPrompt, setSystemPrompt] = useState<string>("");
@@ -265,7 +265,8 @@ export default function App() {
 
     const unlistenStatus = listen<string>("omp-status", (event) => {
       if (event.payload.trim()) {
-        setStatusMessage(event.payload.trim());
+        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        setStatusLog(prev => [...prev, { text: event.payload.trim(), time: elapsed }]);
       }
     });
 
@@ -313,7 +314,7 @@ export default function App() {
   useEffect(() => {
     if (!isProcessing) {
       setElapsedSeconds(0);
-      setStatusMessage("");
+      setStatusLog([]);
       setHasFirstToken(false);
       return;
     }
@@ -549,7 +550,7 @@ export default function App() {
     setIsProcessing(true);
     setHasFirstToken(false);
     setElapsedSeconds(0);
-    setStatusMessage("");
+    setStatusLog([]);
     startTimeRef.current = Date.now();
     ttftRef.current = null;
     tokensRef.current = 0;
@@ -1100,24 +1101,34 @@ export default function App() {
           ))}
           {isProcessing && (
             <div className="flex items-start gap-4 justify-start">
-              <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
                 <CloudSun className={`w-5 h-5 text-primary ${!hasFirstToken ? 'animate-pulse' : ''}`} />
               </div>
-              <div className="px-4 py-3 rounded-lg bg-secondary text-secondary-foreground border border-border">
+              <div className="px-4 py-3 rounded-lg bg-secondary text-secondary-foreground border border-border min-w-[200px] max-w-[400px]">
                 {!hasFirstToken ? (
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-3">
-                      <div className="flex gap-1 items-center">
-                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" />
-                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]" />
-                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]" />
+                  <div className="flex flex-col gap-2">
+                    {/* Header with dots and timer */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex gap-1 items-center">
+                          <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" />
+                          <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]" />
+                          <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]" />
+                        </div>
+                        <span className="text-xs font-medium text-muted-foreground">Working</span>
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        Thinking{elapsedSeconds > 0 ? <span className="tabular-nums"> · {elapsedSeconds}s</span> : '…'}
-                      </span>
+                      <span className="text-xs tabular-nums text-muted-foreground/60">{elapsedSeconds}s</span>
                     </div>
-                    {statusMessage && (
-                      <p className="text-[11px] text-muted-foreground/70 truncate max-w-xs">{statusMessage}</p>
+                    {/* Status log timeline */}
+                    {statusLog.length > 0 && (
+                      <div className="flex flex-col gap-0.5 border-t border-border/50 pt-2">
+                        {statusLog.map((entry, i) => (
+                          <div key={i} className={`flex items-start gap-2 text-[11px] leading-snug ${i === statusLog.length - 1 ? 'text-muted-foreground' : 'text-muted-foreground/40'}`}>
+                            <span className="tabular-nums shrink-0 w-[28px] text-right">{entry.time}s</span>
+                            <span className="truncate">{entry.text}</span>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 ) : (
