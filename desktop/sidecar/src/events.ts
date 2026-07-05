@@ -16,7 +16,9 @@ export function serializeEvent(event: PiEvent): string | null {
         const args = event.args as Record<string, unknown>;
         if (typeof args.command === "string") {
           const cmd = args.command;
-          if (cmd.includes("uv run") || cmd.includes("python")) {
+          if (cmd.includes("AGENTS.md")) {
+            intent = "Updating agent memory…";
+          } else if (cmd.includes("uv run") || cmd.includes("python")) {
             intent = "Running Python script…";
           } else if (cmd.startsWith("ls") || cmd.startsWith("find")) {
             intent = "Searching files…";
@@ -31,8 +33,13 @@ export function serializeEvent(event: PiEvent): string | null {
           const name = parts[parts.length - 1];
           intent = `Reading ${name}…`;
         }
-      } else if (toolName === "edit" || toolName === "write") {
-        intent = "Writing file…";
+      } else if ((toolName === "edit" || toolName === "write") && event.args && typeof event.args === "object") {
+        const args = event.args as Record<string, unknown>;
+        if (typeof args.path === "string" && args.path.includes("AGENTS.md")) {
+          intent = "Updating agent memory…";
+        } else {
+          intent = "Writing file…";
+        }
       }
 
       return JSON.stringify({ 
