@@ -37,7 +37,7 @@ export async function buildSession(modelSelector: string, opts: SessionOptions) 
     sessionManager: SessionManager.inMemory(),
     ...(opts.withTools
       ? opts.bash
-        ? { tools: ["read"], customTools: [createSandboxedBash(opts.bash)] }
+        ? { tools: ["read", "bash"], customTools: [createSandboxedBash(opts.bash)] }
         : { tools: ["read", "bash"] }
       : { noTools: "all" as const }),
   });
