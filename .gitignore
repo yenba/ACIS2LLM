@@ -51,4 +51,13 @@ docs/superpowers/
 
 # Local sample data (moved to tests/data/)
 XMACIS2 DATA/
-\ndesktop/src-tauri/resources/uv/\ndesktop/src-tauri/binaries/
+
+# Tauri build artifacts (binaries & bundled runtimes)
+desktop/src-tauri/resources/uv/
+desktop/src-tauri/binaries/
+
+# Dev patch/fix scripts
+patch*.py
+patch*.pl
+fix_*.py
+generate_*.py
