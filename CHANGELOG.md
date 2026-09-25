@@ -3,9 +3,14 @@
 ## [Unreleased]
 
 ### Fixed
+- `fetch_stations("ALL")` falsely claimed to provide a region-wide query. xmACIS2Py 2.5.1 requires an explicit station-ID list and returned an empty list after trying `A`, `L`, and `L`; the helper now rejects this unsupported sentinel and documents comma-separated station specs instead.
 - `frequency_of_occurrence` / `monthly_threshold_counts` over-counted years for **season** queries. A season window fetched across a multi-year span picks up a leading fragment (Jan/Feb of the first year, with no preceding December) and a trailing fragment (December of the final year, with no following Jan/Feb); these partial seasons were counted as full years, inflating `total_years` and the `X out of N (P%)` denominator and adding junk rows to `table`. Now dropped with the same ~20-days-per-month rule `seasonal_summary` already used, so the two composites agree on which seasons are complete. Month queries are unaffected.
 - `SKILL.md` "Return shapes at a glance" referenced a nonexistent `result["station_name"]` key for `find_best_station`; the actual key is `result["name"]`.
 - `acis2llm/__init__.py` module docstring still listed `"Denver, CO"` as a `find_best_station` example, contradicting the 0.2.1 fix (plain city-state strings do not resolve). Corrected to ZIP / station ID / street address.
+
+### Changed
+- Raised the minimum `xmacis2py` version from 2.4 to 2.5.1 so the documented `analysis.calculate_daily_departures()` workflow is available.
+- Documented xmACIS2Py 2.5.1's `analysis.calculate_daily_departures()` in the vendored skill reference and decision tree.
 
 ## [0.3.0] - 2026-04-28
 

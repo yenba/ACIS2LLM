@@ -81,6 +81,7 @@ These are the failure modes real agents have hit. Every line below is a pattern 
 | `df[df['Month'] == 6 & df['Day'] == 9]` | `df[(df['Month'] == 6) & (df['Day'] == 9)]`. Always wrap each condition in parentheses when using `&`/`|` in DataFrame filters — `&` binds tighter than `==` in Python, so without parens the expression evaluates `6 & df['Day']` first, raising `ValueError: The truth value of a Series is ambiguous`. |
 | `get_single_station_climate_normals(station, interval="monthly")` returned fewer than 12 months | Pass explicit `start_date`/`end_date` covering at least one full year: `start_date="2020-01-01", end_date="2020-12-31"`. The default `end_date` is yesterday and may clip results if `start_date` is not also set to span a full year. For custom climatologies (e.g. a 50-year window) or calendar-date normals, use `xmacis2py.analysis.calculate_daily_normals(station, df=df)` instead — it computes normals from a DataFrame without upstream smoothing. |
 | `fetch_stations(stations="KNYC,KBOS")` or `fetch_stations(station_list=["KNYC"])` | `fetch_stations("KNYC,KBOS", start_date="2024-01-01", end_date="2024-01-31")`. The first argument is a positional **`spec`** string — not a keyword argument named `stations` or `station_list`. Extra kwargs (`start_date`, `end_date`) are forwarded to the underlying xmACIS2Py call. |
+| `fetch_stations("ALL")` for a region-wide query | Pass explicit station IDs, such as `fetch_stations("KNYC,KBOS")`. xmACIS2Py 2.5.1 does not support an `"ALL"` sentinel. |
 | `normals_df["Average Temperature Normal"]` or `normals_df["Max Temperature Normal"]` | `normals_df["Average Temperature"]`, `normals_df["Max Temperature"]`, `normals_df["Min Temperature"]`, `normals_df["Precipitation"]`. The `get_single_station_climate_normals()` DataFrame uses the **same full English column names** as observation DataFrames — there is no " Normal" suffix. |
 
 If a call fails with `TypeError: unexpected keyword argument` or `KeyError`, **don't guess** — check this table or run `inspect.signature(fn)`.
@@ -98,6 +99,7 @@ If a call fails with `TypeError: unexpected keyword argument` or `KeyError`, **d
 | Long record needed for a small station ("data going back as far as possible for downtown LA") | `find_best_station` may return a `+`-joined `station_id` (e.g. `"KCQT+OLD_LA"`) that backfills automatically — just pass it to `fetch_stations` unchanged. |
 | 30-year normals ("what's normal for X") | `xmacis2py.get_single_station_climate_normals(station, ...)` — distinct from observations. |
 | Departure-from-normal ("how much warmer than normal?") | `xmacis2py.get_single_station_departures(station, ...)`. |
+| Custom departures from a supplied normals DataFrame | `xmacis2py.analysis.calculate_daily_departures(station, variables, df=observations, norm=normals)` — matches each observation to a calendar date in the normals and adds `*_anom` columns. |
 | Custom or calendar-date normals ("average for June 9 across 30 years") | `xmacis2py.analysis.calculate_daily_normals(station, df=df)` — computes normals from a DataFrame without upstream smoothing, useful for custom windows. Pair with `calendar_date_records` for same-day-across-years ranking. |
 | Degree days query ("heating degree days in January") | `xmacis2py.get_single_station_acis_data(station, start_date, end_date)` then `xmacis2py.analysis.period_sum(df, "Heating Degree Days")` or `period_mean(df, "Heating Degree Days")`. The column name is the full English name from the variable table. |
 | "Wettest/hottest/snowiest X ever" (cross-year ranking) | Use `acis2llm.seasonal_summary()` or `monthly_totals_by_year()` to get per-year data, then sort `result["table"]` by `"value"` to find the extreme year. |
@@ -150,7 +152,7 @@ When passing a station identifier to `acis2llm.fetch_stations`:
 | `"KNYC"` | Single station. |
 | `"KNYC,KJFK,KLGA"` | **Aggregate** — fetch all in parallel, return one DataFrame with a `station` column. |
 | `"KNYC+OLDER_ID"` | **Backfill** — primary first, fill missing dates from later stations in priority order. Returned `station` column is the full spec. |
-| `"ALL"` | Region-wide query — forwards to `xmacis2py.get_multi_station_acis_data`. Large; use sparingly. |
+| `"ALL"` | Not supported. xmACIS2Py 2.5.1 requires explicit station IDs; use a comma-separated spec. |
 
 **Backfill spec note:** The `+`-joined station ID returned by `find_best_station()` (e.g. `"KPDX+24274"`) is designed to be passed to `acis2llm.fetch_stations()`, NOT to `xmacis2py.get_single_station_acis_data()`. If you need to use `get_single_station_acis_data()`, use only the primary station ID (the part before the `+`). The backfill spec format is an `acis2llm` convention — upstream xmACIS2Py functions do not understand it.
 

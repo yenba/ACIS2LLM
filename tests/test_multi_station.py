@@ -1,6 +1,7 @@
 """Tests for the multi_station fetch helper."""
 
 import pandas as pd
+import pytest
 
 from acis2llm.multi_station import fetch_stations
 
@@ -19,18 +20,9 @@ def test_single_station(mocker):
     mock.assert_called_once()
 
 
-def test_all_stations(mocker):
-    mock = mocker.patch("xmacis2py.get_multi_station_acis_data")
-    mock.return_value = pd.DataFrame({
-        "station": ["KNYC", "KLAX"],
-        "Date": ["2023-01-01", "2023-01-01"],
-        "Maximum Temperature": [45, 60],
-    })
-
-    result = fetch_stations("ALL", start_date="2023-01-01", end_date="2023-01-01")
-
-    mock.assert_called_once_with(stations="ALL", start_date="2023-01-01", end_date="2023-01-01")
-    assert len(result) == 2
+def test_all_stations_is_rejected():
+    with pytest.raises(ValueError, match='ALL.*not supported'):
+        fetch_stations("ALL", start_date="2023-01-01", end_date="2023-01-01")
 
 
 def test_comma_aggregate(mocker):

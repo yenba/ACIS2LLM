@@ -55,7 +55,7 @@ Daily observations for a single station.
 
 ```python
 xmacis2py.get_multi_station_acis_data(
-    stations,            # list[str] OR the literal "ALL"
+    stations,            # list[str] of explicit station IDs
     start_date=None,
     end_date=None,
     from_when=_yesterday,

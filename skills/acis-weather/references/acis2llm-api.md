@@ -79,7 +79,7 @@ One DataFrame for one or many stations. `spec` is a station-spec string:
 | `"KNYC"` | Single station — calls `xmacis2py.get_single_station_acis_data`. |
 | `"KNYC,KJFK,KLGA"` | **Aggregate**: fetch each in parallel, concat with a `station` column. |
 | `"KNYC+OLDER"` | **Backfill**: fetch each, then fill missing dates from later stations in priority order. The returned DataFrame has `station=spec`. |
-| `"ALL"` | Region-wide — calls `xmacis2py.get_multi_station_acis_data(stations="ALL", ...)`. |
+| `"ALL"` | Not supported. xmACIS2Py 2.5.1 requires explicit station IDs; use a comma-separated spec. |
 
 `**kwargs` are forwarded to the underlying xmACIS2Py call. Common ones:
 `start_date`, `end_date`, `from_when`, `time_delta`, `to_csv`, `return_pandas_df`.

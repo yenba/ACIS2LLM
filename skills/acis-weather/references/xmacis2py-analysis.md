@@ -129,6 +129,28 @@ Like `get_single_station_climate_normals` but computed without the upstream
 smoothing — useful for custom climatologies (e.g. a 50-year window). Pass
 either an already-loaded `df` or an `input_path` to a CSV.
 
+## Daily departures from custom normals
+
+```python
+calculate_daily_departures(
+    station,
+    variables,                         # list of full column names
+    df=observations,
+    norm=normals,
+    raw_data_input_path=None,
+    normals_input_path=None,
+    to_csv=False,
+    output_path="XMACIS2 DAILY DEPARTURES",
+    return_pandas_df=True,
+)
+```
+
+Added in xmACIS2Py 2.5.1. Matches each observation to a calendar date in the
+normals DataFrame and adds one `"<column>_anom"` column per requested variable.
+Pass either `df` and `norm` DataFrames or the two CSV input paths. The raw and
+normal DataFrames must each contain a `Date` column; normal dates may be full
+dates or `MM-DD` values.
+
 ## Analog-year analysis
 
 ```python

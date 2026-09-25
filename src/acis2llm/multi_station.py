@@ -9,8 +9,8 @@ Adds two conveniences on top of `xmacis2py.get_single_station_acis_data`:
     later stations in priority order (e.g. ``"KNYC+OLDER"`` extends KNYC's
     record back in time using OLDER for any dates KNYC doesn't cover)
 
-Also passes through the literal ``"ALL"`` keyword to
-``xmacis2py.get_multi_station_acis_data`` for region-wide queries.
+The upstream multi-station function requires an explicit list of station IDs.
+There is no supported region-wide ``"ALL"`` sentinel.
 """
 
 from concurrent.futures import ThreadPoolExecutor
@@ -76,8 +76,8 @@ def fetch_stations(spec, **kwargs) -> pd.DataFrame:
         - Single station ID (``"KNYC"``)
         - Comma-separated for aggregation (``"KNYC,KJFK"`` — concatenated rows)
         - Plus-separated for backfill (``"KNYC+OLDER"`` — primary + fallback in priority order)
-        - The literal ``"ALL"`` to query every station in the region (forwarded to
-          ``xmacis2py.get_multi_station_acis_data``)
+        - ``"ALL"`` is not supported. xmACIS2Py 2.5.1 requires explicit station
+        IDs; pass them as a comma-separated spec instead.
     **kwargs
         Forwarded to the underlying xmACIS2Py call. Common ones:
         ``start_date``, ``end_date``, ``from_when``, ``time_delta``,
@@ -90,6 +90,11 @@ def fetch_stations(spec, **kwargs) -> pd.DataFrame:
     """
     if not isinstance(spec, str):
         raise TypeError(f"spec must be a string, got {type(spec).__name__}")
+    if spec.strip().upper() == "ALL":
+        raise ValueError(
+            'The "ALL" station spec is not supported by xmACIS2Py 2.5.1. '
+            "Pass explicit station IDs, for example 'KNYC,KJFK'."
+        )
 
     args = {"station": spec, **kwargs}
 
@@ -101,11 +106,6 @@ def fetch_stations(spec, **kwargs) -> pd.DataFrame:
         if "+" in spec:
             stations = [s.strip() for s in spec.split("+") if s.strip()]
             return _backfill(stations, args, label=spec)
-
-        if spec.strip().upper() == "ALL":
-            multi_args = {k: v for k, v in args.items() if k != "station"}
-            multi_args["stations"] = "ALL"
-            return xmacis2py.get_multi_station_acis_data(**multi_args)
 
         return xmacis2py.get_single_station_acis_data(**args)
     except Exception:

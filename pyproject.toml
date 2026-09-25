@@ -22,7 +22,7 @@ classifiers = [
 
 dependencies = [
     "requests>=2.31.0",
-    "xmacis2py>=2.4",
+    "xmacis2py>=2.5.1",
     "pandas>=2.0",
     "numpy>=1.24",
     "litellm>=1.91.0",
